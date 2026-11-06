@@ -393,23 +393,33 @@ void MainWindow::EjectDevice(const Device& device) {
         }
     }
 
-    QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
-    const EjectResult result = Ejector::Eject(instanceId);
-    if (result.Succeeded()) {
-        QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
-        if (settings.showNotifications) {
-            tray_.ShowBalloon(strings.Get(i18n::StrId::EjectOkTitle),
-                              strings.Format(i18n::StrId::EjectOkText, displayName), NIIF_INFO);
+    while (hwnd_ != nullptr) {
+        QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
+        const EjectResult result = Ejector::Eject(instanceId);
+        if (result.Succeeded()) {
+            QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
+            if (settings.showNotifications) {
+                tray_.ShowBalloon(strings.Get(i18n::StrId::EjectOkTitle),
+                                  strings.Format(i18n::StrId::EjectOkText, displayName), NIIF_INFO);
+            }
+            RefreshDevices();
+            return;
         }
-        RefreshDevices();
-        return;
-    }
 
-    const std::wstring reason = Ejector::Describe(result);
-    QE_LOG_WARN(L"eject failed for %ls: %ls", displayName.c_str(), reason.c_str());
-    MessageBoxW(nullptr,
-                strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),
-                strings.Get(i18n::StrId::EjectFailTitle), MB_OK | MB_ICONWARNING | MB_TOPMOST);
+        const std::wstring reason = Ejector::Describe(result);
+        QE_LOG_WARN(L"eject failed for %ls: %ls", displayName.c_str(), reason.c_str());
+        const bool busy = result.status == EjectStatus::Vetoed &&
+                          (result.vetoType == PNP_VetoPendingClose ||
+                           result.vetoType == PNP_VetoOutstandingOpen ||
+                           result.vetoType == PNP_VetoWindowsApp ||
+                           result.vetoType == PNP_VetoWindowsService ||
+                           result.vetoType == PNP_VetoTypeUnknown);
+        const UINT buttons = busy ? MB_RETRYCANCEL | MB_DEFBUTTON2 : MB_OK;
+        const int choice = MessageBoxW(hwnd_,
+            strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),
+            strings.Get(i18n::StrId::EjectFailTitle), buttons | MB_ICONWARNING);
+        if (!busy || choice != IDRETRY) return;
+    }
 }
 
 void MainWindow::OpenSettings() {

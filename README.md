@@ -1,13 +1,16 @@
 # USB-Switch
 
-一个用 Win32 C++ 写的 USB 安全弹出工具：托盘常驻、一键安全弹出、插拔通知。
-对标 USB Safely Remove 的核心体验，但不使用其任何商标、名称或界面素材。
+USB-Switch 是 Windows 托盘中的 USB 安全弹出工具。在菜单中选择要拔出的 U 盘、移动硬盘或读卡器；如果 Windows 拒绝弹出，工具会显示系统给出的原因。
 
-A lightweight USB safe-removal tray tool written in Win32 C++: tray resident,
-one-click safe removal, hot-plug notifications. It targets the same core
-experience as USB Safely Remove without using its name, trademarks or artwork.
+A Windows tray tool for safely removing USB storage. Select a drive from the tray menu to eject it. If Windows refuses, USB-Switch shows the reason it received.
 
----
+## 第一次使用 / Quick start
+
+1. **启动：** 使用安装版时，从开始菜单打开 USB-Switch；使用便携版时，先将 ZIP 解压到电脑本地，再双击 `usb-switch.exe`。启动后没有主窗口，图标在任务栏时钟旁；看不到时，展开隐藏的托盘图标。
+2. **选择设备：** 保存并关闭 U 盘上的文件，点击托盘图标，按卷标和盘符核对设备，再选择“点击安全弹出”。默认会弹出确认框；选择“是”才会继续。
+3. **确认结果：** 默认设置下，看到“已安全弹出”即可拔出。若关闭了通知，可在菜单中刷新设备列表核对结果。若提示文件被占用，先保留设备连接，关闭相关文件或等待复制完成，再点“重试”。若错误框只有“确定”，请先按提示处理原因，再从菜单重新选择设备。
+
+**English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
 ## 1.0.1 更新
 
