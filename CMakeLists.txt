@@ -87,10 +87,20 @@ set(QUICKEJECT_SOURCES
     src/util/Str.cpp
 )
 
-add_executable(quickeject WIN32
-    ${QUICKEJECT_SOURCES}
+add_executable(quickeject WIN32 ${QUICKEJECT_SOURCES})
+
+# The resource scripts live in their own target on purpose. They need none of
+# the include directories the C++ sources use (quoted includes such as
+# "resource.h" resolve relative to the .rc file itself), and windres cannot
+# parse an -I path that contains spaces: it splits the argument and hands the
+# remainder to cc1.exe as an input file, which fails the whole build when the
+# project sits in a directory like "E:\Downloads\USB Switch". Keeping them out
+# of the main target's include directories sidesteps that entirely.
+add_library(quickeject_resources OBJECT
     ${CMAKE_CURRENT_BINARY_DIR}/generated/version.rc
     resources/dialogs.rc)
+
+target_link_libraries(quickeject PRIVATE quickeject_resources)
 
 target_include_directories(quickeject PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
