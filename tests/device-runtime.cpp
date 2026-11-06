@@ -17,6 +17,7 @@
 #include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
+#include "core/RemovalTarget.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 
@@ -45,6 +46,62 @@ static void Check(bool condition, const char* what) {
     if (!condition) ++g_failures;
 }
 
+namespace topology {
+constexpr DEVINST disk = 10, transport = 20;
+DEVINST firstChild = disk;
+CONFIGRET siblingStatus = CR_NO_SUCH_DEVNODE;
+std::wstring service = L"USBSTOR";
+DWORD caps = CM_DEVCAP_REMOVABLE;
+
+CONFIGRET WINAPI Parent(PDEVINST node, DEVINST device, ULONG) {
+    *node = transport;
+    return device == disk ? CR_SUCCESS : CR_FAILURE;
+}
+CONFIGRET WINAPI Child(PDEVINST node, DEVINST device, ULONG) {
+    *node = firstChild;
+    return device == transport ? CR_SUCCESS : CR_FAILURE;
+}
+CONFIGRET WINAPI Sibling(PDEVINST node, DEVINST device, ULONG) {
+    *node = 11;
+    return device == disk ? siblingStatus : CR_FAILURE;
+}
+CONFIGRET WINAPI Property(DEVINST device, ULONG prop, PULONG type, PVOID buffer, PULONG bytes, ULONG) {
+    if (device != transport) return CR_FAILURE;
+    if (prop == CM_DRP_SERVICE) {
+        ULONG size = static_cast<ULONG>((service.size() + 1) * sizeof(wchar_t));
+        if (*bytes < size) return CR_BUFFER_SMALL;
+        memcpy(buffer, service.c_str(), size);
+        *type = REG_SZ; *bytes = size;
+    } else if (prop == CM_DRP_CAPABILITIES && *bytes >= sizeof(caps)) {
+        memcpy(buffer, &caps, sizeof(caps));
+        *type = REG_DWORD; *bytes = sizeof(caps);
+    } else return CR_FAILURE;
+    return CR_SUCCESS;
+}
+void Verify() {
+    const qe::detail::RemovalTopologyApi api{Parent, Child, Sibling, Property};
+    auto target = [&] { return qe::detail::RemovalTarget(disk, api); };
+    Check(target() == transport, "single USBSTOR disk selects removable transport");
+    service = L"UASPStor";
+    Check(target() == transport, "single UASP disk selects removable transport");
+    siblingStatus = CR_SUCCESS;
+    Check(target() == disk, "second slot prevents transport ejection");
+    siblingStatus = CR_ACCESS_DENIED;
+    Check(target() == disk, "failed sibling lookup cannot promote request");
+    siblingStatus = CR_NO_SUCH_DEVNODE;
+    firstChild = 11;
+    Check(target() == disk, "changed first child prevents transport ejection");
+    firstChild = disk;
+    caps = 0;
+    Check(target() == disk, "nonremovable transport is never selected");
+    caps = CM_DEVCAP_REMOVABLE;
+    service = L"USBHUB3";
+    Check(target() == disk, "USB hub is never selected as storage transport");
+    service.assign(L"USBSTOR\0bad", 11);
+    Check(target() == disk, "malformed service identity cannot promote request");
+}
+}  // namespace topology
+
 static void WriteOut(const char* text) {
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
     if (out == nullptr || out == INVALID_HANDLE_VALUE) return;
@@ -62,6 +119,7 @@ static void PrintW(const wchar_t* text) {
 }
 
 int main() {
+    topology::Verify();
     WriteOut("Device enumeration (runtime)\n");
 
     namespace fs = std::filesystem;

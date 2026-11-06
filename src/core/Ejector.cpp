@@ -1,4 +1,5 @@
 #include "core/Ejector.h"
+#include "core/RemovalTarget.h"
 
 #include <iterator>
 
@@ -24,24 +25,6 @@ constexpr PNP_VETO_TYPE kVetoNonDisableable = static_cast<PNP_VETO_TYPE>(10);
 constexpr PNP_VETO_TYPE kVetoLegacyDriver = static_cast<PNP_VETO_TYPE>(11);
 constexpr PNP_VETO_TYPE kVetoInsufficientRights = static_cast<PNP_VETO_TYPE>(12);
 constexpr PNP_VETO_TYPE kVetoAlreadyRemoved = static_cast<PNP_VETO_TYPE>(13);
-
-// Some USBSTOR disks expose safe removal on their immediate transport node.
-DEVINST RemovalTarget(DEVINST disk) {
-    DEVINST parent{}, child{}, sibling{};
-    if (CM_Get_Parent(&parent, disk, 0) != CR_SUCCESS ||
-        CM_Get_Child(&child, parent, 0) != CR_SUCCESS || child != disk ||
-        CM_Get_Sibling(&sibling, child, 0) != CR_NO_SUCH_DEVNODE) return disk;
-    WCHAR service[64]{};
-    ULONG type{}, bytes = sizeof(service);
-    if (CM_Get_DevNode_Registry_PropertyW(parent, CM_DRP_SERVICE, &type, service, &bytes, 0) != CR_SUCCESS ||
-        type != REG_SZ || bytes >= sizeof(service) ||
-        (!str::EqualsI(service, L"USBSTOR") && !str::EqualsI(service, L"UASPStor"))) return disk;
-    DWORD caps{};
-    bytes = sizeof(caps);
-    if (CM_Get_DevNode_Registry_PropertyW(parent, CM_DRP_CAPABILITIES, &type, &caps, &bytes, 0) != CR_SUCCESS ||
-        type != REG_DWORD || bytes != sizeof(caps) || !(caps & CM_DEVCAP_REMOVABLE)) return disk;
-    return parent;
-}
 
 unsigned long ConfigRetToWin32Error(CONFIGRET configRet) {
     switch (configRet) {
@@ -79,7 +62,7 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
     PNP_VETO_TYPE vetoType = PNP_VetoTypeUnknown;
     WCHAR vetoName[MAX_PATH] = L"";
     const CONFIGRET configRet = CM_Request_Device_EjectW(
-        RemovalTarget(devInst), &vetoType, vetoName, static_cast<ULONG>(std::size(vetoName)), 0);
+        detail::RemovalTarget(devInst), &vetoType, vetoName, static_cast<ULONG>(std::size(vetoName)), 0);
 
     result.configRet = configRet;
     result.vetoType = vetoType;
