@@ -234,6 +234,14 @@ python tools\check-strings.py    # 校验 i18n 表与枚举一致、占位符匹
 
 实机验收可先运行 `.\tests\hardware-eject.ps1 -Drive D -VolumeLabel 'ESD-USB' -PreflightOnly`，将盘符和卷标替换为专用测试盘的实际值。去掉 `-PreflightOnly` 后，脚本会在测试盘上新建临时文件，确认 Windows 拒绝弹出；关闭并确认文件已删除后，再按原实例 ID 请求安全弹出。它不属于常规构建步骤，不会由 CI 自动执行。
 
+**USB 读卡器换卡验收：** 准备一个 USB 读卡器和两张卷标不同的测试卡，把第一张插入读卡器。用下面的命令做只读预检，将程序路径、盘符和卷标换成实际值。预检通过后，在同一命令末尾加 `-RunSwap` 才会请求退卡。看到换卡提示时，只换卡片，保持读卡器连接。
+
+```powershell
+.\tests\hardware-card-swap.ps1 -Exe .\usb-switch.exe -Drive E -FirstLabel 'CARD-A' -SecondLabel 'CARD-B'
+```
+
+脚本分别检查原卷消失、同一 USB 存储节点持续在线、第二张卡能在该读卡器中读取；新卡不必沿用原盘符。当前脚本适用于 Windows 报告为 USBSTOR 或 UASPStor 的直连存储节点；不能确认设备身份时不会给出通过结论。
+
 ## 许可证 / License
 
 本项目以 GNU General Public License **version 3 only**（GPL-3.0-only）授权，
