@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(usb-switch
-    VERSION 1.3.1
+    VERSION 1.4.0
     DESCRIPTION "USB-Switch - USB safe removal tray tool"
     LANGUAGES CXX RC)
 
@@ -74,6 +74,7 @@ set(QUICKEJECT_SOURCES
 
     src/core/DeviceManager.cpp
     src/core/MediaEject.cpp
+    src/core/OpenFiles.cpp
     src/core/UsbPort.cpp
     src/core/DeviceNotifier.cpp
     src/core/VetoEvents.cpp

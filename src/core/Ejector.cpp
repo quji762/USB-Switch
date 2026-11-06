@@ -78,6 +78,7 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
     if (CM_Get_Device_IDW(target, targetId, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS) targetId[0] = 0;
     FILETIME start{};
     GetSystemTimePreciseAsFileTime(&start);
+    result.requestedAt = start;
     const CONFIGRET configRet = CM_Request_Device_EjectW(
         target, &vetoType, vetoName, static_cast<ULONG>(std::size(vetoName)), 0);
 

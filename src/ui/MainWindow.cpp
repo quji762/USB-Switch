@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <commctrl.h>
 #include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include "app/SingleInstance.h"
 #include "core/Ejector.h"
 #include "core/MediaEject.h"
+#include "core/OpenFiles.h"
 #include "core/UsbPort.h"
 #include "core/RestartProcess.h"
 #include "i18n/I18n.h"
@@ -49,6 +51,25 @@ constexpr UINT_PTR kRescanTimerId = 1;
 constexpr UINT_PTR kTrayRetryTimerId = 2;
 constexpr UINT_PTR kReconnectTimer = 3;
 constexpr UINT kRescanDelayMs = 250;
+
+struct FilesDialogData { std::wstring text; bool retry; };
+INT_PTR CALLBACK OpenFilesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_INITDIALOG) {
+        const auto& data = *reinterpret_cast<const FilesDialogData*>(lp);
+        const auto& strings = i18n::I18n::Instance();
+        SetWindowTextW(hwnd,strings.Get(i18n::StrId::InspectFiles));
+        SetDlgItemTextW(hwnd,IDC_FILES_TEXT,data.text.c_str());
+        SetDlgItemTextW(hwnd,IDRETRY,strings.Get(i18n::StrId::FilesRetry));
+        SetDlgItemTextW(hwnd,IDCANCEL,strings.Get(i18n::StrId::FilesClose));
+        if (!data.retry) ShowWindow(GetDlgItem(hwnd,IDRETRY),SW_HIDE);
+        SetFocus(GetDlgItem(hwnd,IDCANCEL));
+        return FALSE;
+    }
+    if (msg == WM_COMMAND && (LOWORD(wp)==IDCANCEL || LOWORD(wp)==IDRETRY)) {
+        EndDialog(hwnd,LOWORD(wp)); return TRUE;
+    }
+    return FALSE;
+}
 
 }  // namespace
 
@@ -604,6 +625,49 @@ void MainWindow::EjectDevice(const Device& device) {
         const std::wstring reason = Ejector::Describe(result);
         QE_LOG_WARN(L"eject failed for %ls: %ls", displayName.c_str(), reason.c_str());
         const bool offerRetry = result.CanRetry();
+        if (result.status == EjectStatus::Vetoed && !result.reportedProcesses.empty()) {
+            using i18n::StrId;
+            const TASKDIALOG_BUTTON inspect{101, strings.Get(StrId::InspectFiles)};
+            TASKDIALOGCONFIG dialog{};
+            dialog.cbSize = sizeof(dialog);
+            dialog.hwndParent = hwnd_;
+            dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+            dialog.pszMainIcon = TD_WARNING_ICON;
+            dialog.pszWindowTitle = strings.Get(StrId::EjectFailTitle);
+            auto message = strings.Format(StrId::EjectFailText, displayName, reason);
+            dialog.pszContent = message.c_str();
+            dialog.dwCommonButtons = offerRetry ? TDCBF_RETRY_BUTTON | TDCBF_CANCEL_BUTTON : TDCBF_CLOSE_BUTTON;
+            dialog.nDefaultButton = offerRetry ? IDCANCEL : IDCLOSE;
+            dialog.cButtons = 1;
+            dialog.pButtons = &inspect;
+            int selected{};
+            if (SUCCEEDED(TaskDialogIndirect(&dialog,&selected,nullptr,nullptr))) {
+                if (selected == inspect.nButtonID) {
+                    auto results = InspectOpenFiles(instanceId,result);
+                    std::wstring detail = strings.Get(StrId::FilesIntro);
+                    for (const auto& item : results.Items()) {
+                        detail += str::Format(L"\n\n%ls (PID %lu)", item.GetString(L"name",L"").c_str(),
+                                              static_cast<DWORD>(item.GetNumber(L"pid",0)));
+                        const auto* paths = item.Find(L"paths");
+                        if (paths) for (const auto& path : paths->Items()) detail += L"\n" + path.AsString();
+                        const auto status = item.GetString(L"status",L"");
+                        if (status == L"access_denied") detail += L"\n" + std::wstring(strings.Get(StrId::FilesDenied));
+                        else if (status != L"inspected") detail += L"\n" + std::wstring(strings.Get(StrId::FilesPartial));
+                        if ((!paths || !paths->Size()) && status == L"inspected")
+                            detail += L"\n" + std::wstring(strings.Get(StrId::FilesEmpty));
+                    }
+                    FilesDialogData data{{},offerRetry};
+                    for (auto ch : detail) {
+                        if (ch == L'\n') data.text += L'\r';
+                        data.text += ch;
+                    }
+                    selected = static_cast<int>(DialogBoxParamW(instance_,MAKEINTRESOURCEW(IDD_OPEN_FILES),hwnd_,
+                                                                OpenFilesProc,reinterpret_cast<LPARAM>(&data)));
+                }
+                if (offerRetry && selected == IDRETRY) continue;
+                return;
+            }
+        }
         const UINT buttons = offerRetry ? MB_RETRYCANCEL | MB_DEFBUTTON2 : MB_OK;
         const int choice = MessageBoxW(hwnd_,
             strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),

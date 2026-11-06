@@ -12,6 +12,12 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 1.4.0：查看阻止弹出的程序打开了哪些文件
+
+如果 Windows 拒绝弹出并报告了关联程序，在托盘提示中选择 **查看打开的文件**。程序会按 PID 列出当下仍在目标盘上打开的文件或文件夹；保存并关闭相关文档后可手动重试。这个列表是排查线索，不能证明每个列出的文件都是阻塞原因。权限不足、进程已退出、仅有内存映射或文件已关闭时，可能没有路径。文件路径不写入应用日志，也不会自动提权或关闭文件。
+
+命令行使用 `usb-switch --eject F: --files --json`。这是实际弹出请求；仅在 Windows 拒绝后才检查文件。结果中的 `fileInspection` 按进程给出 `pid`、`name`、`paths` 和 `status`。状态包括 `inspected`（已检查）、`partial`（结果不完整）、`access_denied`、`timeout`、`process_changed`、`device_unavailable` 和 `unavailable`。检查共享约 3.5 秒时间预算，每个进程最多返回 32 个路径。没有相关进程时数组为空；普通 `--json` 不查询路径。
+
 ## 1.3.1：重新连接刚弹出的设备（实验功能）
 
 用托盘安全弹出设备后，如果还没有拔下，可打开托盘菜单选择“重新连接：设备名”。程序只记住本次运行中最后一次成功弹出的设备；退出程序即清除记录。Windows 必须仍将原节点标记为已准备弹出。若需要管理员权限，可以选择打开系统授权提示，或取消并手动拔插。对于可定位到集线器端口的 USB 存储设备，系统授权提示显示 USB-Switch；程序在授权后重新核对端口上的驱动标识及设备停止状态，仅重新连接对应端口。不能确认端口时，仍只尝试按原节点重启，授权时使用系统 PnPUtil。授权命令运行期间不能重复提交。若命令返回错误，托盘显示 Windows 错误及编号；若命令成功但原磁盘十秒内仍未出现在列表中，托盘会提示刷新或手动拔插。此功能尚未包含在 1.2.0 安装包内。
@@ -151,7 +157,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.3.1 — removable devices
+USB-Switch 1.4.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```
@@ -205,8 +211,7 @@ USB-Switch 1.3.1 — removable devices
 - 强制弹出（忽略 veto）**故意没有实现**：它会绕过硬件的安全停止流程，有数据
   损坏风险。要做的话应作为独立的、有明显警告的选项，并先尝试
   `FSCTL_DISMOUNT_VOLUME`。
-- 占用诊断结合 PnP 拒绝原因和本次系统事件记录，无法保证识别全部进程或具体文档；要列出“所有打开句柄的进程”
-  需要枚举系统句柄（`NtQuerySystemInformation` + 提权），那是 2.0 的事。
+- 占用文件检查仅覆盖 Windows 为本次拒绝报告的进程，以及当前权限可识别的目标卷文件句柄。不保证列出所有占用者。
 
 ## 开发 / Development
 

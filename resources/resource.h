@@ -8,6 +8,8 @@
 
 #define IDD_ABOUT                       201
 #define IDD_ALIAS                       203
+#define IDD_OPEN_FILES                  204
+#define IDC_FILES_TEXT                  601
 #define IDC_ALIAS_NAME                  501
 #define IDC_ALIAS_HINT                  502
 #define IDC_SET_KEY_LABEL               407

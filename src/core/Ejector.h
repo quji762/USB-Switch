@@ -24,6 +24,7 @@ enum class EjectStatus {
 struct ReportedProcess { DWORD pid; std::wstring name; };
 
 struct EjectResult {
+    FILETIME requestedAt{};
     std::wstring stoppedInstanceId; // Actual removal target, only after success.
     std::vector<ReportedProcess> reportedProcesses;
     EjectStatus status = EjectStatus::Failed;

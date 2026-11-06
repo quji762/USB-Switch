@@ -59,6 +59,13 @@ const Entry kStrings[] = {
      L"Could not verify this device is still an eligible non-system disk. Refresh the device list."},
     {StrId::EventProcesses, L"Windows 事件记录的关联程序：", L"Processes reported by Windows for this removal:"},
     {StrId::NoEventProcess, L"本次未从 Windows 事件中定位到具体程序。", L"No specific process was identified in Windows events for this removal."},
+    {StrId::InspectFiles, L"查看打开的文件", L"Show open files"},
+    {StrId::FilesIntro, L"以下是相关程序当前在目标盘上打开的文件或目录。保存并关闭相关文件后，可以重试弹出。", L"These files or folders are open on the target drive. Save and close the relevant files before retrying removal."},
+    {StrId::FilesDenied, L"没有权限查看此程序的文件。", L"Permission denied while inspecting this process."},
+    {StrId::FilesPartial, L"未能完成检查，可能还有其他打开的文件。", L"Inspection was incomplete. Other files may still be open."},
+    {StrId::FilesEmpty, L"当前未找到可识别的路径。", L"No recognizable path was found at the time of inspection."},
+    {StrId::FilesRetry, L"重试弹出", L"Retry removal"},
+    {StrId::FilesClose, L"关闭", L"Close"},
     {StrId::EjectFailTitle, L"弹出失败", L"Removal failed"},
     {StrId::EjectFailText, L"无法弹出“%1”。\n\n%2", L"Could not remove “%1”.\n\n%2"},
 
@@ -140,6 +147,7 @@ const Entry kStrings[] = {
      L"  --eject-media <目标> [--json]  只退出介质，保留读卡器\n"
      L"  --eject <目标>    按盘符、完整挂载路径或设备实例 ID 安全弹出\n"
      L"  --eject <目标> --json  弹出并输出 JSON 结果\n"
+     L"  --eject <目标> --files --json  被拒绝时查询相关进程打开的路径\n"
      L"  --settings        打开托盘程序的设置窗口\n"
      L"  --version         显示版本\n"
      L"  --help            显示本帮助\n"
@@ -150,6 +158,7 @@ const Entry kStrings[] = {
      L"  --eject-media <target> [--json]  eject media and leave the reader connected\n"
      L"  --eject <target>  safely remove by drive, exact mount path or instance ID\n"
      L"  --eject <target> --json  eject and output a JSON result\n"
+     L"  --eject <target> --files --json  inspect open paths if removal is vetoed\n"
      L"  --settings        open settings in the tray application\n"
      L"  --version         print version\n"
      L"  --help            show this help\n"

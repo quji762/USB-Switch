@@ -8,6 +8,9 @@ exe = Path(sys.argv[1]).resolve()
 for args, status, marker in [
     (["--version"], 0, "usb-switch"),
     (["--help"], 0, "--eject-media"),
+    (["--help"], 0, "--files"),
+    (["--eject", "missing-device", "--files"], 2, "--list"),
+    (["--eject-media", "missing-device", "--files", "--json"], 2, "--list"),
     (["--eject-media"], 2, "--list"),
     (["--eject-media", "--json"], 2, "--list"),
     (["--eject-media", "missing-device", "--eject", "another-device"], 2, "--list"),

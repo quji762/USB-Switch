@@ -46,6 +46,13 @@ enum class StrId {
     EjectIneligible,
     EventProcesses,
     NoEventProcess,
+    InspectFiles,
+    FilesIntro,
+    FilesDenied,
+    FilesPartial,
+    FilesEmpty,
+    FilesRetry,
+    FilesClose,
     EjectFailTitle,
     EjectFailText,
 

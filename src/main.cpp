@@ -20,6 +20,7 @@
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
 #include "core/MediaEject.h"
+#include "core/OpenFiles.h"
 #include "core/UsbPort.h"
 #include "core/EjectJson.h"
 #include "i18n/I18n.h"
@@ -34,6 +35,7 @@ namespace {
 struct Options {
     bool listDevices = false;
     bool mediaOnly = false;
+    bool inspectFiles = false;
     bool jsonOutput = false;
     bool showHelp = false;
     bool showVersion = false;
@@ -76,6 +78,11 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
                 options.usageError = true;  // missing argument
             }
             if (str::Trim(options.ejectTarget).empty()) options.usageError = true;
+            if (!options.mediaOnly && i+1<argc && std::wstring_view(argv[i+1])==L"--files") {
+                options.inspectFiles=true;
+                ++i;
+                if (i+1>=argc || std::wstring_view(argv[i+1])!=L"--json") options.usageError=true;
+            }
             if (i + 1 < argc && std::wstring_view(argv[i + 1]) == L"--json") {
                 options.jsonOutput = true;
                 ++i;
@@ -176,7 +183,7 @@ int RunListDevices(bool jsonOutput) {
     return 0;
 }
 
-int RunEject(const std::wstring& target, bool jsonOutput, bool mediaOnly) {
+int RunEject(const std::wstring& target, bool jsonOutput, bool mediaOnly, bool files) {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
     if (!manager.Refresh()) {
@@ -212,7 +219,10 @@ int RunEject(const std::wstring& target, bool jsonOutput, bool mediaOnly) {
     }
     const EjectResult result = Ejector::Eject(device->instanceId);
     if (jsonOutput) {
-        PrintLine(EjectJson(result, device->instanceId).Dump());
+        auto report=EjectJson(result, device->instanceId);
+        if (files && result.status==EjectStatus::Vetoed)
+            report.Set(L"fileInspection",InspectOpenFiles(device->instanceId,result));
+        PrintLine(report.Dump());
         return result.Succeeded() ? 0 : 1;
     }
     if (result.Succeeded()) {
@@ -233,6 +243,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     if (argv == nullptr) {
         MessageBoxW(nullptr, L"CommandLineToArgvW failed", QUICKEJECT_APP_NAME_W, MB_OK | MB_ICONERROR);
         return 1;
+    }
+    if (argc == 6 && std::wstring_view(argv[1]) == L"--file-worker") {
+        int rc=qe::FileWorker(argv[2],argv[3],argv[4],argv[5]);
+        LocalFree(argv); return rc;
     }
     if (argc == 3 && std::wstring_view(argv[1]) == L"--restart-held-usb") {
         // Elevated helper: no tray, settings, log files or external commands.
@@ -268,7 +282,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     } else if (options.listDevices) {
         exitCode = qe::RunListDevices(options.jsonOutput);
     } else if (!options.ejectTarget.empty()) {
-        exitCode = qe::RunEject(options.ejectTarget, options.jsonOutput, options.mediaOnly);
+        exitCode = qe::RunEject(options.ejectTarget, options.jsonOutput, options.mediaOnly, options.inspectFiles);
     } else {
         qe::App app(instance);
         const qe::InitStatus status = app.Init(options.openSettings);
