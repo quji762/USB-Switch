@@ -26,6 +26,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
     & python tests/cli.py dist/usb-switch.exe
     if ($LASTEXITCODE -ne 0) { throw 'CLI checks failed' }
+    & python tests/cli-output.py dist/usb-switch.exe
+    if ($LASTEXITCODE -ne 0) { throw 'CLI Unicode output checks failed' }
     & .\tests\migration.ps1
     if ($GuiSmoke) { & .\tests\gui-smoke.ps1 }
     if (!$InnoCompiler) {

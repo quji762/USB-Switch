@@ -6,7 +6,7 @@
 
 #include <windows.h>
 
-#include <cstdio>
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,6 +22,7 @@
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "util/Str.h"
+#include "util/Win32.h"
 
 // Helpers live in qe so they can use qe::str, qe::i18n and friends directly.
 namespace qe {
@@ -74,58 +75,44 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
     return options;
 }
 
-// A GUI subsystem binary has no console of its own. Three situations:
-//   1. stdout redirected to a pipe or file -> write UTF-8 bytes to that handle
-//      (checked first: borrowing the parent console would bypass redirection)
-//   2. stdout is a console handle          -> WriteConsoleW
-//   3. no inherited handle at all          -> attach to the parent console
-//   4. nothing available (double clicked)  -> stay silent instead of crashing
-enum class OutputTarget { None, File, ConsoleHandle, ConsoleStream };
-
-OutputTarget g_outputTarget = OutputTarget::None;
+// Prefer the inherited handle so a file or pipe redirection stays intact.
+HANDLE g_output = nullptr;
+Handle g_attachedOutput;
+bool g_console = false;
+bool g_writeFailed = false;
 
 bool AttachOutput() {
-    const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (out != nullptr && out != INVALID_HANDLE_VALUE) {
-        DWORD mode = 0;
-        g_outputTarget = (GetConsoleMode(out, &mode) != FALSE) ? OutputTarget::ConsoleHandle
-                                                              : OutputTarget::File;
-        return true;
+    g_output = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (!g_output || g_output == INVALID_HANDLE_VALUE) {
+        if (!AttachConsole(ATTACH_PARENT_PROCESS)) return false;
+        g_attachedOutput.Reset(CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+        if (!g_attachedOutput) return false;
+        g_output = g_attachedOutput.Get();
     }
-    if (AttachConsole(ATTACH_PARENT_PROCESS) != FALSE && freopen("CONOUT$", "w", stdout) != nullptr) {
-        g_outputTarget = OutputTarget::ConsoleStream;
-        return true;
-    }
-    return false;
+    DWORD mode = 0;
+    g_console = GetConsoleMode(g_output, &mode) != FALSE;
+    return true;
 }
 
 void PrintLine(const std::wstring& text) {
-    switch (g_outputTarget) {
-        case OutputTarget::File: {
-            const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-            if (out == nullptr || out == INVALID_HANDLE_VALUE) break;
-            std::string utf8 = str::ToUtf8(text);
-            utf8 += "\r\n";
-            DWORD written = 0;
-            WriteFile(out, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
-            break;
+    if (!g_output || g_output == INVALID_HANDLE_VALUE || g_writeFailed) return;
+    const std::wstring line = text + L"\r\n";
+    std::string bytes;
+    if (!g_console) bytes = str::ToUtf8(line);
+    const size_t count = g_console ? line.size() : bytes.size();
+    for (size_t pos = 0; pos < count;) {
+        DWORD chunk = static_cast<DWORD>((std::min)(count - pos, size_t{8192}));
+        if (g_console && pos + chunk < count && IS_HIGH_SURROGATE(line[pos + chunk - 1])) --chunk;
+        DWORD written = 0;
+        const BOOL ok = g_console ? WriteConsoleW(g_output, line.data() + pos, chunk, &written, nullptr)
+                                  : WriteFile(g_output, bytes.data() + pos, chunk, &written, nullptr);
+        if (!ok || !written) {
+            g_writeFailed = true;
+            QE_LOG_WARN(L"command output write failed (%lu)", GetLastError());
+            return;
         }
-        case OutputTarget::ConsoleHandle: {
-            const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-            if (out == nullptr || out == INVALID_HANDLE_VALUE) break;
-            DWORD written = 0;
-            WriteConsoleW(out, text.c_str(), static_cast<DWORD>(text.size()), &written, nullptr);
-            const wchar_t newline = L'\n';
-            WriteConsoleW(out, &newline, 1, &written, nullptr);
-            break;
-        }
-        case OutputTarget::ConsoleStream:
-            _putws(text.c_str());
-            fflush(stdout);
-            break;
-        case OutputTarget::None:
-        default:
-            break;
+        pos += written;
     }
 }
 
@@ -259,5 +246,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
     qe::Logger::Instance().Shutdown();
     LocalFree(argv);
+    // A successful removal stays successful even if its confirmation cannot be printed.
+    if (exitCode == 0 && options.ejectTarget.empty() && qe::g_writeFailed) return 1;
     return exitCode;
 }

@@ -44,6 +44,8 @@ jobs:
           $exe = Join-Path $PWD 'dist/usb-switch.exe'
           python tests/cli.py $exe
           if ($LASTEXITCODE -ne 0) { throw 'CLI checks failed' }
+          python tests/cli-output.py $exe
+          if ($LASTEXITCODE -ne 0) { throw 'CLI Unicode output checks failed' }
           ./tests/migration.ps1 -Exe $exe
       - name: Build and test installer
         shell: pwsh
