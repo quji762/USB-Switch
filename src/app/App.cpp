@@ -60,15 +60,15 @@ InitStatus App::Init() {
         return InitStatus::FatalError;
     }
 
-    // Keep the Run entry pointing at the current executable (the installer
-    // moves the binary on upgrade).
+    // Migrate only an owned legacy entry. Normal launches respect external removal.
     if (Settings::Instance().Data().runAtStartup) {
-        if (window_->ApplyRunAtStartup(true)) {
-            const std::wstring command = AutoStart::CommandLine();
-            const size_t slash = command.find_last_of(L"\\/");
-            if (slash != std::wstring::npos) {
-                AutoStart::ClearIfMatches(L"QuickEject", command.substr(0, slash + 1) + L"quickeject.exe\"");
-            }
+        const auto command = AutoStart::CommandLine();
+        const auto slash = command.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            const auto legacy = command.substr(0, slash + 1) + L"quickeject.exe\"";
+            if (AutoStart::Inspect(L"QuickEject", legacy) == AutoStart::Entry::Owned &&
+                AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command))
+                AutoStart::ClearIfMatches(L"QuickEject", legacy);
         }
     }
 

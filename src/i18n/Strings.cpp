@@ -93,8 +93,8 @@ const Entry kStrings[] = {
      L"Language changes apply immediately; this dialog updates next time you open it."},
     {StrId::SettingsSaveFailed, L"无法保存设置。请检查用户配置目录是否可写，然后重试。",
      L"Settings could not be saved. Check that your user configuration directory is writable and try again."},
-    {StrId::SettingsStartupFailed, L"无法更新 Windows 开机启动项。请检查当前用户的注册表权限。",
-     L"Could not update the Windows startup entry. Check your user registry permissions."},
+    {StrId::SettingsStartupFailed, L"无法更新 Windows 开机启动项。请检查注册表权限，或确认同名启动项是否指向其他程序。",
+     L"Could not update the Windows startup entry. Check registry permissions and whether another program owns this entry."},
     // The .rc templates hardcode English for these; INITDIALOG overwrites them.
     {StrId::DialogOk, L"确定", L"OK"},
     {StrId::DialogCancel, L"取消", L"Cancel"},

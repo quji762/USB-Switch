@@ -5,6 +5,7 @@
 #include <iterator>
 
 #include "app/AppInfo.h"
+#include "app/AutoStart.h"
 #include "app/Logger.h"
 #include "app/Settings.h"
 #include "i18n/I18n.h"
@@ -59,7 +60,12 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             SetDlgItemTextW(hwnd, IDC_SET_NOTE, strings.Get(i18n::StrId::SettingsNote));
 
             const AppSettings& settings = Settings::Instance().Data();
-            CheckDlgButton(hwnd, IDC_SET_STARTUP, settings.runAtStartup ? BST_CHECKED : BST_UNCHECKED);
+            const auto entry = AutoStart::Inspect(QUICKEJECT_APP_NAME_W, AutoStart::CommandLine());
+            const bool owned = entry == AutoStart::Entry::Owned;
+            SetWindowLongPtrW(hwnd, DWLP_USER, owned);
+            CheckDlgButton(hwnd, IDC_SET_STARTUP, owned ? BST_CHECKED : BST_UNCHECKED);
+            if (entry == AutoStart::Entry::Error)
+                EnableWindow(GetDlgItem(hwnd, IDC_SET_STARTUP), FALSE);
             CheckDlgButton(hwnd, IDC_SET_NOTIFY, settings.showNotifications ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hwnd, IDC_SET_CONFIRM, settings.confirmBeforeEject ? BST_CHECKED : BST_UNCHECKED);
 
@@ -100,9 +106,35 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                 settings.language = languages[selected];
             }
 
-            if (!Settings::Instance().Save()) {
+            const auto path = AutoStart::CommandLine();
+            const bool originallyOwned = GetWindowLongPtrW(hwnd, DWLP_USER) != 0;
+            const bool changed = settings.runAtStartup != originallyOwned;
+            auto apply = [&](bool enabled) {
+                return enabled ? AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, path)
+                               : AutoStart::ClearIfMatches(QUICKEJECT_APP_NAME_W, path);
+            };
+            const auto& strings = i18n::I18n::Instance();
+            if (changed && !apply(settings.runAtStartup)) {
                 settings = previous;
-                const auto& strings = i18n::I18n::Instance();
+                MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsStartupFailed),
+                            strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+            if (!changed) {
+                const auto current = AutoStart::Inspect(QUICKEJECT_APP_NAME_W, path);
+                settings.runAtStartup = current == AutoStart::Entry::Error ? previous.runAtStartup
+                                                                           : current == AutoStart::Entry::Owned;
+            }
+            if (!Settings::Instance().Save()) {
+                if (changed && !apply(originallyOwned)) {
+                    const auto actual = AutoStart::Inspect(QUICKEJECT_APP_NAME_W, path);
+                    const bool owned = actual == AutoStart::Entry::Owned;
+                    SetWindowLongPtrW(hwnd, DWLP_USER, owned);
+                    CheckDlgButton(hwnd, IDC_SET_STARTUP, owned ? BST_CHECKED : BST_UNCHECKED);
+                    MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsStartupFailed),
+                                strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONWARNING);
+                }
+                settings = previous;
                 MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsSaveFailed),
                             strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONERROR);
                 return TRUE;

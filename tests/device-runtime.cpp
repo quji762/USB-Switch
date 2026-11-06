@@ -136,18 +136,21 @@ int main() {
     Check(!qe::Ejector::Describe(bogus).empty(), "a failed eject has an explanation");
 
     const std::wstring testRunName = L"USB-Switch-test-" + std::to_wstring(GetCurrentProcessId());
-    if (qe::AutoStart::IsEnabled(testRunName)) {
+    using Startup = qe::AutoStart;
+    const std::wstring owned = L"\"C:\\test-owned.exe\"";
+    const std::wstring other = L"\"C:\\different.exe\"";
+    if (Startup::Inspect(testRunName, owned) != Startup::Entry::Missing) {
         Check(false, "temporary startup entry name is unused");
+    } else if (Startup::SetEnabled(testRunName, owned)) {
+        Check(Startup::Inspect(testRunName, owned) == Startup::Entry::Owned &&
+              Startup::Inspect(testRunName, other) == Startup::Entry::Other, "ownership reflects actual command");
+        Check(!Startup::SetEnabled(testRunName, other), "foreign startup command cannot be overwritten");
+        Check(Startup::ClearIfMatches(testRunName, other) &&
+              Startup::Inspect(testRunName, owned) == Startup::Entry::Owned, "foreign startup command cannot be removed");
+        Check(Startup::ClearIfMatches(testRunName, L"\"C:\\TEST-OWNED.exe\"") &&
+              Startup::Inspect(testRunName, owned) == Startup::Entry::Missing, "matching startup entry is removed");
     } else {
-        const bool created = qe::AutoStart::SetEnabled(testRunName, L"\"C:\\test-owned.exe\"");
-        Check(created, "temporary startup entry created");
-        if (created) {
-            Check(qe::AutoStart::ClearIfMatches(testRunName, L"\"C:\\different.exe\"") &&
-                  qe::AutoStart::IsEnabled(testRunName), "mismatched startup entry is preserved");
-            Check(qe::AutoStart::ClearIfMatches(testRunName, L"\"C:\\TEST-OWNED.exe\"") &&
-                  !qe::AutoStart::IsEnabled(testRunName), "matching startup entry is removed");
-            qe::AutoStart::Clear(testRunName);
-        }
+        Check(false, "temporary startup entry created");
     }
 
     printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);

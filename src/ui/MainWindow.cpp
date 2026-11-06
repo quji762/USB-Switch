@@ -6,7 +6,6 @@
 #include <algorithm>
 
 #include "app/AppInfo.h"
-#include "app/AutoStart.h"
 #include "app/Logger.h"
 #include "app/Settings.h"
 #include "app/SingleInstance.h"
@@ -415,30 +414,10 @@ void MainWindow::EjectDevice(const Device& device) {
 
 void MainWindow::OpenSettings() {
     if (Dialogs::ShowSettings(instance_, hwnd_) != IDOK) return;
-    if (!ApplyRunAtStartup(Settings::Instance().Data().runAtStartup)) {
-        const auto& strings = i18n::I18n::Instance();
-        MessageBoxW(hwnd_, strings.Get(i18n::StrId::SettingsStartupFailed),
-                    strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONWARNING);
-    }
     RebuildTrayTip();
 }
 
 void MainWindow::OpenAbout() { Dialogs::ShowAbout(instance_, hwnd_); }
-
-bool MainWindow::ApplyRunAtStartup(bool enabled) {
-    const std::wstring command = AutoStart::CommandLine();
-    if (command.empty()) {
-        QE_LOG_ERROR(L"cannot determine the executable path; run-at-startup not changed");
-        return false;
-    }
-    const bool ok = enabled ? AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command)
-                            : AutoStart::Clear(QUICKEJECT_APP_NAME_W);
-    // %ls, not %s: in the wprintf family %s already means a wide string, so
-    // passing these narrow literals would be undefined behaviour.
-    QE_LOG_INFO(L"run-at-startup %ls: %ls", enabled ? L"enabled" : L"disabled",
-                ok ? L"ok" : L"failed");
-    return ok;
-}
 
 void MainWindow::HandleSecondInstance() {
     tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,

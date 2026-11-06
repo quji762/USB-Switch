@@ -32,9 +32,6 @@ public:
     HWND Handle() const noexcept { return hwnd_; }
     bool TrayCreationFailed() const noexcept { return trayCreationFailed_; }
 
-    // Registers or clears the "run at sign-in" entry for the current binary.
-    bool ApplyRunAtStartup(bool enabled);
-
     // Called when a second instance starts: show a hint instead of a window.
     void HandleSecondInstance();
 

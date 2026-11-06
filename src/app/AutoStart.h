@@ -14,9 +14,9 @@ namespace qe {
 class AutoStart {
 public:
     // Reads/writes HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
-    static bool IsEnabled(std::wstring_view valueName);
+    enum class Entry { Missing, Owned, Other, Error };
+    static Entry Inspect(std::wstring_view valueName, std::wstring_view expected);
     static bool SetEnabled(std::wstring_view valueName, const std::wstring& commandLine);
-    static bool Clear(std::wstring_view valueName);
     // Remove an entry only if it still has the expected command line.
     static bool ClearIfMatches(std::wstring_view valueName, std::wstring_view expected);
 
