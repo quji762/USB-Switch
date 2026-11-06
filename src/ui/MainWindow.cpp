@@ -424,17 +424,12 @@ void MainWindow::EjectDevice(const Device& device) {
 
         const std::wstring reason = Ejector::Describe(result);
         QE_LOG_WARN(L"eject failed for %ls: %ls", displayName.c_str(), reason.c_str());
-        const bool busy = result.status == EjectStatus::Vetoed &&
-                          (result.vetoType == PNP_VetoPendingClose ||
-                           result.vetoType == PNP_VetoOutstandingOpen ||
-                           result.vetoType == PNP_VetoWindowsApp ||
-                           result.vetoType == PNP_VetoWindowsService ||
-                           result.vetoType == PNP_VetoTypeUnknown);
-        const UINT buttons = busy ? MB_RETRYCANCEL | MB_DEFBUTTON2 : MB_OK;
+        const bool offerRetry = result.CanRetry();
+        const UINT buttons = offerRetry ? MB_RETRYCANCEL | MB_DEFBUTTON2 : MB_OK;
         const int choice = MessageBoxW(hwnd_,
             strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),
             strings.Get(i18n::StrId::EjectFailTitle), buttons | MB_ICONWARNING);
-        if (!busy || choice != IDRETRY) return;
+        if (!offerRetry || choice != IDRETRY) return;
     }
 }
 

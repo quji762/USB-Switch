@@ -26,6 +26,21 @@ struct EjectResult {
     std::wstring vetoApplication;  // name of the vetoing application, if reported
     unsigned long win32Error = 0;  // valid when status == Failed
 
+    // These refusals can clear while the user waits or closes files. Never
+    // resubmit automatically: the tray shows Retry with Cancel selected.
+    bool CanRetry() const noexcept {
+        if (status != EjectStatus::Vetoed) return false;
+        switch (vetoType) {
+            case PNP_VetoDevice:
+            case PNP_VetoPendingClose:
+            case PNP_VetoOutstandingOpen:
+            case PNP_VetoWindowsApp:
+            case PNP_VetoWindowsService:
+            case PNP_VetoTypeUnknown: return true;
+            default: return false;
+        }
+    }
+
     bool Succeeded() const noexcept { return status == EjectStatus::Success; }
 };
 

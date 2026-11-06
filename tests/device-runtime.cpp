@@ -267,6 +267,15 @@ int main() {
     fault = Fault::None;
     Check(faultManager.Refresh() && callbacks == 2, "enumeration recovers after a transient error");
 
+    qe::EjectResult refusal;
+    refusal.status = qe::EjectStatus::Vetoed;
+    refusal.vetoType = PNP_VetoDevice;
+    Check(refusal.CanRetry(), "device veto after closing files offers a manual retry");
+    refusal.vetoType = static_cast<PNP_VETO_TYPE>(12); // PNP_VetoInsufficientRights
+    Check(!refusal.CanRetry(), "insufficient rights do not suggest a transient busy device");
+    refusal.status = qe::EjectStatus::Failed;
+    refusal.vetoType = PNP_VetoTypeUnknown;
+    Check(!refusal.CanRetry(), "failed device lookup does not offer retry");
     // Ejector must refuse a bogus instance rather than misbehave.
     const qe::EjectResult bogus = qe::Ejector::Eject(L"USB-Switch\\NONEXISTENT\\TEST");
     Check(!bogus.Succeeded(), "ejecting a nonexistent instance fails cleanly");
