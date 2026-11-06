@@ -114,12 +114,14 @@ const Entry kStrings[] = {
     {StrId::CliUsage,
      L"用法: usb-switch [选项]\n"
      L"  --list            列出可移动设备后退出\n"
+     L"  --list --json     以 JSON 数组输出设备列表\n"
      L"  --eject <盘符>    安全弹出指定设备(如 --eject E:)\n"
      L"  --version         显示版本\n"
      L"  --help            显示本帮助\n"
      L"无参数时启动托盘程序。",
      L"Usage: usb-switch [options]\n"
      L"  --list            list removable devices and exit\n"
+     L"  --list --json     output the device list as a JSON array\n"
      L"  --eject <drive>   safely remove a device (e.g. --eject E:)\n"
      L"  --version         print version\n"
      L"  --help            show this help\n"

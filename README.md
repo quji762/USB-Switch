@@ -107,6 +107,15 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 
 每次调用只接受一个操作。多个弹出目标或空目标会显示用法并返回退出码 2，不会弹出设备。也可以将 `--list` 输出的完整 PnP 实例 ID 传给 `--eject`；含有 `&` 时请加引号。
 
+脚本可运行 `--list --json`。成功时输出 UTF-8 JSON 数组，没有设备时为 `[]`；
+枚举失败时返回退出码 1，并输出 `{"error":"enumeration_failed"}`。字段名不随界面语言变化。
+`driveLetters` 是盘符数组，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。
+
+```powershell
+$devices = .\usb-switch.exe --list --json | Out-String | ConvertFrom-Json
+$devices | Select-Object displayName, driveLetters, instanceId
+```
+
 `--list` 输出示例：
 
 ```

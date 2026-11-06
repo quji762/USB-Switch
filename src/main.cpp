@@ -16,6 +16,7 @@
 #include "app/Logger.h"
 #include "app/Settings.h"
 #include "core/Device.h"
+#include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
 #include "i18n/I18n.h"
@@ -28,6 +29,7 @@ namespace {
 
 struct Options {
     bool listDevices = false;
+    bool jsonOutput = false;
     bool showHelp = false;
     bool showVersion = false;
     bool usageError = false;  // unknown switch or missing argument
@@ -46,6 +48,10 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
                              argument.rfind(L"--eject=", 0) == 0;
         if (argument == L"--list" || argument == L"-l") {
             options.listDevices = true;
+            if (i + 1 < argc && std::wstring_view(argv[i + 1]) == L"--json") {
+                options.jsonOutput = true;
+                ++i;
+            }
         } else if (argument == L"--help" || argument == L"-h" || argument == L"/?") {
             options.showHelp = true;
         } else if (argument == L"--version" || argument == L"-v") {
@@ -132,14 +138,20 @@ std::wstring NormalizeDriveLetter(std::wstring_view input) {
     return text;
 }
 
-int RunListDevices() {
+int RunListDevices(bool jsonOutput) {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
     if (!manager.Refresh()) {
-        PrintLine(strings.Get(i18n::StrId::ErrorEnumFailed));
+        PrintLine(jsonOutput ? L"{\"error\":\"enumeration_failed\"}" : strings.Get(i18n::StrId::ErrorEnumFailed));
         return 1;
     }
     const std::vector<Device> devices = manager.Devices();
+    if (jsonOutput) {
+        auto rows = json::Value::Array();
+        for (const auto& device : devices) rows.Push(DeviceJson(device));
+        PrintLine(rows.Dump());
+        return 0;
+    }
 
     PrintLine(strings.Get(i18n::StrId::CliListTitle));
     if (devices.empty()) {
@@ -232,7 +244,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
         qe::PrintLine(strings.Get(qe::i18n::StrId::CliVersion));
         exitCode = 0;
     } else if (options.listDevices) {
-        exitCode = qe::RunListDevices();
+        exitCode = qe::RunListDevices(options.jsonOutput);
     } else if (!options.ejectTarget.empty()) {
         exitCode = qe::RunEject(options.ejectTarget);
     } else {

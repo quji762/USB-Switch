@@ -12,6 +12,7 @@
 #include "app/AutoStart.h"
 #include "app/Settings.h"
 #include "core/Device.h"
+#include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
 #include "i18n/I18n.h"
@@ -66,6 +67,22 @@ int main() {
     qe::i18n::I18n::Instance().Init(L"en");
 
     qe::DeviceManager manager;
+    // Exercise populated output even on a runner with no USB drives attached.
+    qe::Device sample;
+    sample.volumeLabel = L"资料 \"A&B\"";
+    sample.driveLetters = L"E:, F:";
+    sample.sizeBytes = UINT64_MAX;
+    qe::json::Value parsed;
+    Check(qe::json::Value::Parse(qe::DeviceJson(sample).Dump(), parsed) &&
+          parsed.GetString(L"volumeLabel", L"") == sample.volumeLabel &&
+          parsed.GetString(L"mountedVolumeBytes", L"") == L"18446744073709551615",
+          "JSON inventory preserves quoted Unicode labels and exact byte counts");
+    const auto* drives = parsed.Find(L"driveLetters");
+    Check(drives && drives->Size() == 2 && drives->Items()[0].AsString() == L"E:" &&
+          drives->Items()[1].AsString() == L"F:", "JSON inventory splits multiple drive letters");
+    const auto unmounted = qe::DeviceJson(qe::Device{});
+    Check(unmounted.Find(L"driveLetters")->Size() == 0 && unmounted.Find(L"mountedVolumeBytes")->IsNull(),
+          "JSON inventory represents absent mounts and unknown capacity");
     Check(manager.Refresh(), "device enumeration succeeds");
     const qe::DeviceList& devices = manager.Devices();
 
