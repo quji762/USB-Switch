@@ -135,7 +135,7 @@ target_link_libraries(usb-switch PRIVATE
     ole32
     advapi32
     user32
-    gdi32)
+    gdi32 dwmapi uxtheme)
 
 if(MSVC)
     target_compile_options(usb-switch PRIVATE /W4 /permissive- /utf-8)

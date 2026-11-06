@@ -15,6 +15,7 @@ namespace qe {
 struct AppSettings {
     // "auto" (follow the UI language), "zh" or "en".
     std::wstring language = L"auto";
+    std::wstring appearance = L"auto";
     std::wstring menuHotkey = L"U"; // Ctrl+Alt plus this letter; empty disables.
     std::map<std::wstring, std::wstring> aliases; // PnP instance ID -> local display name
     std::map<std::wstring, std::wstring> hiddenDevices; // lowercase instance ID -> last displayed name

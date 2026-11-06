@@ -68,6 +68,7 @@ struct FilesDialogData { std::wstring text; bool retry; };
 INT_PTR CALLBACK OpenFilesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (PaintDialogHeader(msg,lp)) return TRUE;
     if (msg == WM_INITDIALOG) {
+    if (auto result = ThemeDialog(hwnd,msg,wp,lp)) return result;
         const auto& data = *reinterpret_cast<const FilesDialogData*>(lp);
         const auto& strings = i18n::I18n::Instance();
         SetWindowTextW(hwnd,strings.Get(i18n::StrId::InspectFiles));
@@ -439,7 +440,6 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         }
         if (!GetMenuItemCount(menu))
             AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::AllHidden));
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
 
     if (media && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(media), strings.Get(i18n::StrId::MenuMedia)))
@@ -462,6 +462,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                     preferences.DeviceName(current->instanceId,current->displayName);
                 AppendMenuW(restore, MF_STRING, kRestoreBase + restoreIds.size(), MenuLabel(name).c_str());
                 restoreIds.push_back(item.first);
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
             }
             if (!AppendMenuW(parent, MF_POPUP,reinterpret_cast<UINT_PTR>(restore),strings.Get(i18n::StrId::RestoreDevice)))
                 DestroyMenu(restore);

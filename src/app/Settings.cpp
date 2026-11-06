@@ -28,6 +28,8 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
     std::wstring language = root.GetString(L"language", L"auto");
     if (!language.empty()) settings.language = language;
 
+    auto mode = root.GetString(L"appearance", L"auto");
+    if (mode == L"light" || mode == L"dark") settings.appearance = mode;
     auto key = root.GetString(L"menuHotkey", L"U");
     if (key.empty() || (key.size() == 1 && key[0] >= L'A' && key[0] <= L'Z')) settings.menuHotkey = key;
     if (const auto* aliases = root.Find(L"deviceAliases"); aliases && aliases->IsObject()) {
@@ -58,6 +60,7 @@ json::Value AppSettings::ToJson() const {
     auto hidden = json::Value::Object();
     for (const auto& item : hiddenDevices) hidden.Set(item.first, json::Value::String(item.second));
     root.Set(L"hiddenDevices", std::move(hidden));
+    root.Set(L"appearance", json::Value::String(appearance));
     root.Set(L"language", json::Value::String(language));
     root.Set(L"runAtStartup", json::Value::Bool(runAtStartup));
     root.Set(L"showNotifications", json::Value::Bool(showNotifications));

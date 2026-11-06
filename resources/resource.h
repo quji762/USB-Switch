@@ -16,6 +16,10 @@
 #define IDC_SET_KEY                     408
 #define IDC_SET_BEHAVIOR                409
 #define IDC_SET_INPUT                   410
+#define IDC_SET_DIVIDER                 411
+#define IDC_SET_THEME                   413
+#define IDC_SET_THEME_LABEL             414
+#define IDC_SET_FOOTER                  412
 #define IDC_DIALOG_HEADER               701
 #define IDD_SETTINGS                    202
 

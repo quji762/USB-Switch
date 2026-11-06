@@ -24,6 +24,7 @@ constexpr wchar_t kLanguageZh[] = L"zh";
 constexpr wchar_t kLanguageEn[] = L"en";
 
 INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (auto result = ThemeDialog(hwnd,message,wParam,lParam)) return result;
     if (PaintDialogHeader(message,lParam)) return TRUE;
     switch (message) {
         case WM_INITDIALOG: {
@@ -57,6 +58,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 }
 
 INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (auto result = ThemeDialog(hwnd,message,wParam,lParam)) return result;
     if (PaintDialogHeader(message,lParam)) return TRUE;
     switch (message) {
         case WM_INITDIALOG: {
@@ -73,6 +75,11 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             SetDlgItemTextW(hwnd, IDC_SET_INPUT, strings.Get(i18n::StrId::SettingsInput));
 
             const AppSettings& settings = Settings::Instance().Data();
+            SetDlgItemTextW(hwnd, IDC_SET_THEME_LABEL, strings.Get(i18n::StrId::ThemeLabel));
+            for (auto id : {i18n::StrId::SettingsLanguageAuto, i18n::StrId::ThemeLight, i18n::StrId::ThemeDark})
+                SendDlgItemMessageW(hwnd, IDC_SET_THEME, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(strings.Get(id)));
+            SendDlgItemMessageW(hwnd, IDC_SET_THEME, CB_SETCURSEL,
+                settings.appearance == L"dark" ? 2 : settings.appearance == L"light" ? 1 : 0, 0);
             const auto entry = AutoStart::Inspect(QUICKEJECT_APP_NAME_W, AutoStart::CommandLine());
             const bool owned = entry == AutoStart::Entry::Owned;
             SetWindowLongPtrW(hwnd, DWLP_USER, owned);
@@ -112,10 +119,16 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                 EndDialog(hwnd, IDCANCEL);
                 return TRUE;
             }
+            if (commandId == IDC_SET_THEME && HIWORD(wParam) == CBN_SELCHANGE) {
+                ApplyDialogTheme(hwnd, true);
+                return TRUE;
+            }
             if (commandId != IDOK) break;
 
             AppSettings& settings = Settings::Instance().Data();
             const AppSettings previous = settings;
+            const auto mode = SendDlgItemMessageW(hwnd, IDC_SET_THEME, CB_GETCURSEL, 0, 0);
+            settings.appearance = mode == 2 ? L"dark" : mode == 1 ? L"light" : L"auto";
             const auto key = SendDlgItemMessageW(hwnd, IDC_SET_KEY, CB_GETCURSEL, 0, 0);
             if (key >= 0 && key <= 26) settings.menuHotkey = key ? std::wstring(1, static_cast<wchar_t>(L'A'+key-1)) : L"";
             settings.runAtStartup = IsDlgButtonChecked(hwnd, IDC_SET_STARTUP) == BST_CHECKED;
@@ -175,6 +188,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 struct AliasData { std::wstring id, display; };
 
 INT_PTR CALLBACK AliasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (auto result = ThemeDialog(hwnd,msg,wp,lp)) return result;
     if (PaintDialogHeader(msg,lp)) return TRUE;
     auto& settings = Settings::Instance();
     const auto& strings = i18n::I18n::Instance();
