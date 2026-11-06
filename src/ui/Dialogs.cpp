@@ -1,6 +1,9 @@
 #include "ui/Dialogs.h"
+#include "ui/DialogHeader.h"
 
 #include <windows.h>
+#include <commctrl.h>
+#include <shellapi.h>
 
 #include <iterator>
 
@@ -21,17 +24,25 @@ constexpr wchar_t kLanguageZh[] = L"zh";
 constexpr wchar_t kLanguageEn[] = L"en";
 
 INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    UNREFERENCED_PARAMETER(lParam);
+    if (PaintDialogHeader(message,lParam)) return TRUE;
     switch (message) {
         case WM_INITDIALOG: {
             const auto& strings = i18n::I18n::Instance();
             SetWindowTextW(hwnd, strings.Get(i18n::StrId::AboutTitle));
             SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
-            SetDlgItemTextW(hwnd, IDC_ABOUT_APPNAME, strings.Get(i18n::StrId::AboutAppName));
+            SetDlgItemTextW(hwnd, IDC_DIALOG_HEADER, strings.Get(i18n::StrId::AboutTitle));
             SetDlgItemTextW(hwnd, IDC_ABOUT_DESC, strings.Get(i18n::StrId::AboutDescription));
             SetDlgItemTextW(hwnd, IDC_ABOUT_WEBSITE,
-                            strings.Format(i18n::StrId::AboutWebsite, QUICKEJECT_WEBSITE_W).c_str());
+                            strings.Format(i18n::StrId::AboutWebsite, L"<a>" QUICKEJECT_WEBSITE_W L"</a>").c_str());
             return TRUE;
+        }
+        case WM_NOTIFY: {
+            const auto* event = reinterpret_cast<const NMHDR*>(lParam);
+            if (event && event->idFrom == IDC_ABOUT_WEBSITE && (event->code == NM_CLICK || event->code == NM_RETURN)) {
+                ShellExecuteW(hwnd,L"open",QUICKEJECT_WEBSITE_W,nullptr,nullptr,SW_SHOWNORMAL);
+                return TRUE;
+            }
+            break;
         }
         case WM_COMMAND:
             if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
@@ -46,18 +57,20 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 }
 
 INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    UNREFERENCED_PARAMETER(lParam);
+    if (PaintDialogHeader(message,lParam)) return TRUE;
     switch (message) {
         case WM_INITDIALOG: {
             const auto& strings = i18n::I18n::Instance();
             SetWindowTextW(hwnd, strings.Get(i18n::StrId::SettingsTitle));
-            SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
+            SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogSave));
             SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DialogCancel));
             SetDlgItemTextW(hwnd, IDC_SET_STARTUP, strings.Get(i18n::StrId::SettingsStartup));
             SetDlgItemTextW(hwnd, IDC_SET_NOTIFY, strings.Get(i18n::StrId::SettingsNotify));
             SetDlgItemTextW(hwnd, IDC_SET_CONFIRM, strings.Get(i18n::StrId::SettingsConfirm));
             SetDlgItemTextW(hwnd, IDC_SET_LANG_LABEL, strings.Get(i18n::StrId::SettingsLanguage));
-            SetDlgItemTextW(hwnd, IDC_SET_NOTE, strings.Get(i18n::StrId::SettingsNote));
+            SetDlgItemTextW(hwnd, IDC_DIALOG_HEADER, strings.Get(i18n::StrId::SettingsHeading));
+            SetDlgItemTextW(hwnd, IDC_SET_BEHAVIOR, strings.Get(i18n::StrId::SettingsBehavior));
+            SetDlgItemTextW(hwnd, IDC_SET_INPUT, strings.Get(i18n::StrId::SettingsInput));
 
             const AppSettings& settings = Settings::Instance().Data();
             const auto entry = AutoStart::Inspect(QUICKEJECT_APP_NAME_W, AutoStart::CommandLine());
@@ -162,14 +175,16 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 struct AliasData { std::wstring id, display; };
 
 INT_PTR CALLBACK AliasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (PaintDialogHeader(msg,lp)) return TRUE;
     auto& settings = Settings::Instance();
     const auto& strings = i18n::I18n::Instance();
     if (msg == WM_INITDIALOG) {
         auto* data = reinterpret_cast<AliasData*>(lp);
         SetWindowLongPtrW(hwnd, DWLP_USER, lp);
         SetWindowTextW(hwnd, strings.Get(i18n::StrId::MenuAliases));
+        SetDlgItemTextW(hwnd, IDC_DIALOG_HEADER, strings.Get(i18n::StrId::MenuAliases));
         SetDlgItemTextW(hwnd, IDC_ALIAS_HINT, strings.Format(i18n::StrId::AliasHint, data->display).c_str());
-        SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
+        SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogSave));
         SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DialogCancel));
         SendDlgItemMessageW(hwnd, IDC_ALIAS_NAME, EM_SETLIMITTEXT, 64, 0);
         const auto& names = settings.Data().aliases;
@@ -201,6 +216,8 @@ void Dialogs::EditAlias(HINSTANCE instance, HWND owner, const std::wstring& id, 
 }
 
 INT_PTR Dialogs::ShowAbout(HINSTANCE instance, HWND owner) {
+    INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX), ICC_LINK_CLASS};
+    InitCommonControlsEx(&controls);
     return DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_ABOUT), owner, AboutDialogProc, 0);
 }
 

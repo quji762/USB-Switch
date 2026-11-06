@@ -1,66 +1,55 @@
-// Dialog templates. All visible text is set at runtime from the i18n table so
-// the same binary can serve every language (see src/i18n/Strings.cpp).
-
 #include <winres.h>
 #include "resource.h"
 
-/////////////////////////////////////////////////////////////////////////////
-// About
-/////////////////////////////////////////////////////////////////////////////
-
-// 236x106: the OK button (y=90, height=14) ends at 104, so it needs 106 to
-// stay inside the client area.
-IDD_ABOUT DIALOGEX 0, 0, 236, 106
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
-BEGIN
-    LTEXT    "",              IDC_ABOUT_APPNAME,  14,  10, 208, 10
-    // Read-only multiline edit: static text does not word-wrap, this does.
-    EDITTEXT IDC_ABOUT_DESC,                  14,  26, 208, 44, ES_MULTILINE | ES_READONLY | WS_VSCROLL
-    LTEXT    "",              IDC_ABOUT_WEBSITE,  14,  76, 208, 10
-    DEFPUSHBUTTON "OK",       IDOK,               178, 90,  44, 14
-END
-
-/////////////////////////////////////////////////////////////////////////////
-// Settings
-/////////////////////////////////////////////////////////////////////////////
-
-// 224x100: the buttons (y=84, height=14) end at 98.
-IDD_SETTINGS DIALOGEX 0, 0, 224, 124
+IDD_SETTINGS DIALOGEX 0, 0, 292, 231
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 1
 BEGIN
-    AUTOCHECKBOX "",          IDC_SET_STARTUP,     12,  8, 200, 10
-    AUTOCHECKBOX "",          IDC_SET_NOTIFY,      12, 22, 200, 10
-    AUTOCHECKBOX "",          IDC_SET_CONFIRM,     12, 36, 200, 10
-    LTEXT    "",              IDC_SET_LANG_LABEL,  12, 52,  40, 10
-    COMBOBOX IDC_SET_LANG,                      56, 50, 156, 44, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT "", IDC_SET_KEY_LABEL, 12, 70, 84, 12
-    COMBOBOX IDC_SET_KEY, 98, 68, 114, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT    "",              IDC_SET_NOTE,        12, 91, 200, 16
-    DEFPUSHBUTTON "OK",       IDOK,                98, 107,  44, 14
-    PUSHBUTTON "Cancel",      IDCANCEL,           148, 107,  44, 14
+    CONTROL "", IDC_DIALOG_HEADER, "Static", SS_OWNERDRAW, 0, 0, 292, 44
+    GROUPBOX "", IDC_SET_BEHAVIOR, 12, 52, 268, 74
+    AUTOCHECKBOX "", IDC_SET_STARTUP, 23, 66, 244, 13, WS_TABSTOP
+    AUTOCHECKBOX "", IDC_SET_NOTIFY, 23, 85, 244, 13, WS_TABSTOP
+    AUTOCHECKBOX "", IDC_SET_CONFIRM, 23, 104, 244, 13, WS_TABSTOP
+    GROUPBOX "", IDC_SET_INPUT, 12, 132, 268, 65
+    LTEXT "", IDC_SET_LANG_LABEL, 23, 150, 95, 13
+    COMBOBOX IDC_SET_LANG, 123, 147, 144, 72, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "", IDC_SET_KEY_LABEL, 23, 175, 95, 13
+    COMBOBOX IDC_SET_KEY, 123, 172, 144, 108, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON "Save", IDOK, 160, 205, 56, 18
+    PUSHBUTTON "Cancel", IDCANCEL, 222, 205, 58, 18
 END
 
-IDD_ALIAS DIALOGEX 0, 0, 260, 96
+IDD_ABOUT DIALOGEX 0, 0, 292, 154
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About"
+FONT 9, "Segoe UI", 400, 0, 1
+BEGIN
+    CONTROL "", IDC_DIALOG_HEADER, "Static", SS_OWNERDRAW, 0, 0, 292, 44
+    LTEXT "", IDC_ABOUT_DESC, 14, 56, 264, 50, SS_NOPREFIX
+    CONTROL "", IDC_ABOUT_WEBSITE, "SysLink", WS_TABSTOP, 14, 108, 264, 17
+    DEFPUSHBUTTON "OK", IDOK, 222, 129, 58, 18
+END
+
+IDD_ALIAS DIALOGEX 0, 0, 292, 142
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Device alias"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 1
 BEGIN
-    LTEXT "", IDC_ALIAS_HINT, 10, 8, 240, 36, SS_NOPREFIX
-    EDITTEXT IDC_ALIAS_NAME, 10, 46, 240, 14, ES_AUTOHSCROLL
-    DEFPUSHBUTTON "OK", IDOK, 151, 73, 47, 14
-    PUSHBUTTON "Cancel", IDCANCEL, 203, 73, 47, 14
+    CONTROL "", IDC_DIALOG_HEADER, "Static", SS_OWNERDRAW, 0, 0, 292, 44
+    LTEXT "", IDC_ALIAS_HINT, 14, 54, 264, 34, SS_NOPREFIX
+    EDITTEXT IDC_ALIAS_NAME, 14, 90, 264, 16, ES_AUTOHSCROLL
+    DEFPUSHBUTTON "Save", IDOK, 160, 116, 56, 18
+    PUSHBUTTON "Cancel", IDCANCEL, 222, 116, 58, 18
 END
 
-IDD_OPEN_FILES DIALOGEX 0, 0, 340, 196
+IDD_OPEN_FILES DIALOGEX 0, 0, 358, 226
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Open files"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 1
 BEGIN
-    EDITTEXT IDC_FILES_TEXT, 8, 8, 324, 151, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON "Retry", IDRETRY, 224, 172, 50, 14
-    DEFPUSHBUTTON "Close", IDCANCEL, 282, 172, 50, 14
+    CONTROL "", IDC_DIALOG_HEADER, "Static", SS_OWNERDRAW, 0, 0, 358, 44
+    EDITTEXT IDC_FILES_TEXT, 12, 54, 334, 136, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON "Retry", IDRETRY, 200, 199, 78, 18
+    DEFPUSHBUTTON "Close", IDCANCEL, 284, 199, 62, 18
 END

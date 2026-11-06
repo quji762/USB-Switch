@@ -1,4 +1,5 @@
 #include "ui/MainWindow.h"
+#include "ui/DialogHeader.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -65,10 +66,12 @@ constexpr UINT kRescanDelayMs = 250;
 
 struct FilesDialogData { std::wstring text; bool retry; };
 INT_PTR CALLBACK OpenFilesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (PaintDialogHeader(msg,lp)) return TRUE;
     if (msg == WM_INITDIALOG) {
         const auto& data = *reinterpret_cast<const FilesDialogData*>(lp);
         const auto& strings = i18n::I18n::Instance();
         SetWindowTextW(hwnd,strings.Get(i18n::StrId::InspectFiles));
+        SetDlgItemTextW(hwnd,IDC_DIALOG_HEADER,strings.Get(i18n::StrId::InspectFiles));
         SetDlgItemTextW(hwnd,IDC_FILES_TEXT,data.text.c_str());
         SetDlgItemTextW(hwnd,IDRETRY,strings.Get(i18n::StrId::FilesRetry));
         SetDlgItemTextW(hwnd,IDCANCEL,strings.Get(i18n::StrId::FilesClose));
@@ -441,9 +444,12 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     if (media && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(media), strings.Get(i18n::StrId::MenuMedia)))
         DestroyMenu(media);
-    if (aliases && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
+    HMENU manage = (aliases || hide || !hidden.empty()) ? CreatePopupMenu() : nullptr;
+    // If the submenu cannot be created, the original actions remain available.
+    HMENU parent = manage ? manage : menu;
+    if (aliases && !AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
         DestroyMenu(aliases);
-    if (hide && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hide), strings.Get(i18n::StrId::HideDevice)))
+    if (hide && !AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(hide), strings.Get(i18n::StrId::HideDevice)))
         DestroyMenu(hide);
     if (!hidden.empty()) {
         HMENU restore = CreatePopupMenu();
@@ -457,10 +463,12 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                 AppendMenuW(restore, MF_STRING, kRestoreBase + restoreIds.size(), MenuLabel(name).c_str());
                 restoreIds.push_back(item.first);
             }
-            if (!AppendMenuW(menu, MF_POPUP,reinterpret_cast<UINT_PTR>(restore),strings.Get(i18n::StrId::RestoreDevice)))
+            if (!AppendMenuW(parent, MF_POPUP,reinterpret_cast<UINT_PTR>(restore),strings.Get(i18n::StrId::RestoreDevice)))
                 DestroyMenu(restore);
         }
     }
+    if (manage && !AppendMenuW(menu, MF_POPUP,reinterpret_cast<UINT_PTR>(manage),strings.Get(i18n::StrId::ManageDevices)))
+        DestroyMenu(manage);
     const auto reconnectTarget = stoppedTarget_;
     if (!reconnectTarget.empty() && !hidden.count(str::Lower(stoppedDisk_))) {
         std::wstring caption;
@@ -471,6 +479,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         AppendMenuW(menu, MF_STRING | (reconnectDeadline_ ? MF_GRAYED : 0), kCommandReconnect, caption.c_str());
     }
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCommandSettings, strings.Get(i18n::StrId::MenuSettings));
     AppendMenuW(menu, MF_STRING, kCommandLogs, strings.Get(i18n::StrId::MenuLogs));
     AppendMenuW(menu, MF_STRING, kCommandAbout, strings.Get(i18n::StrId::MenuAbout));

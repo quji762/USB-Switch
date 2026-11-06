@@ -12,9 +12,13 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 1.5.1：托盘菜单与窗口布局
+
+日常弹出和退卡操作保留在托盘主菜单。展开“管理设备”可设置别名、隐藏设备或恢复显示。设置窗口把启动、通知和弹出确认放在一组，语言和快捷键放在另一组；选择“保存”后生效。
+
 ## 1.5.0：隐藏设备和识别空卡槽
 
-托盘菜单中选择 **隐藏设备 → 设备名**，该设备便从主列表、设置别名和退卡列表中隐藏。选择 **重新显示设备** 可恢复；设备已断开时也可以按上次显示的名称恢复。设置按当前用户和设备实例 ID 保存，重启后仍有效，不按盘符匹配。隐藏仅影响托盘菜单，不会卸载设备，也不会改变命令行清单。
+托盘菜单中选择 **管理设备 → 隐藏设备 → 设备名**，该设备便从主列表、设置别名和退卡列表中隐藏。在同一子菜单选择 **重新显示设备** 可恢复；设备已断开时也可以按上次显示的名称恢复。设置按当前用户和设备实例 ID 保存，重启后仍有效，不按盘符匹配。隐藏仅影响托盘菜单，不会卸载设备，也不会改变命令行清单。
 
 对报告支持可移动介质的设备，程序向驱动查询介质是否就绪。明确报告无介质的槽位显示“空卡槽”；仅报告未就绪的设备显示“无可用介质（空槽或未就绪）”。两种情况下菜单项均置灰，也不提供退卡。部分读卡器在卡片已退出但尚未取走时与物理空槽返回同一状态。程序不会因容量未知、没有卷标或没有盘符而断言空槽。`--list --json` 的 `mediaState` 分别为 `present`、`empty`、`not_ready` 或 `unknown`。
 
@@ -38,7 +42,7 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 ## 1.2.0：全局快捷键和设备别名
 
-在其他应用里按 **Ctrl+Alt+U** 可打开设备菜单，方向键选设备，Esc 取消。快捷键本身不会弹出设备。在“设置”中可改为 Ctrl+Alt 加其他字母或关闭；组合被其他程序占用时会提示。打开“设置设备别名”，选择设备并输入名称；留空保存可恢复原名。别名保存在当前用户配置中，菜单和确认框同时保留原卷标及盘符。别名按 Windows 提供的实例 ID 匹配，盘符变化不会单独改变绑定；如果换接口后 Windows 分配了不同 ID，需要重新命名。
+在其他应用里按 **Ctrl+Alt+U** 可打开设备菜单，方向键选设备，Esc 取消。快捷键本身不会弹出设备。在“设置”中可改为 Ctrl+Alt 加其他字母或关闭；组合被其他程序占用时会提示。打开“管理设备 → 设置设备别名”，选择设备并输入名称；留空保存可恢复原名。别名保存在当前用户配置中，菜单和确认框同时保留原卷标及盘符。别名按 Windows 提供的实例 ID 匹配，盘符变化不会单独改变绑定；如果换接口后 Windows 分配了不同 ID，需要重新命名。
 
 ## 1.1.0：弹出占用诊断
 
@@ -163,7 +167,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.5.0 — removable devices
+USB-Switch 1.5.1 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```

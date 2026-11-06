@@ -90,6 +90,11 @@ enum class StrId {
 
     // Settings dialog
     SettingsTitle,
+    SettingsHeading,
+    SettingsBehavior,
+    SettingsInput,
+    DialogSave,
+    ManageDevices,
     SettingsStartup,
     SettingsNotify,
     SettingsConfirm,

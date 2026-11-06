@@ -14,6 +14,9 @@
 #define IDC_ALIAS_HINT                  502
 #define IDC_SET_KEY_LABEL               407
 #define IDC_SET_KEY                     408
+#define IDC_SET_BEHAVIOR                409
+#define IDC_SET_INPUT                   410
+#define IDC_DIALOG_HEADER               701
 #define IDD_SETTINGS                    202
 
 // About dialog

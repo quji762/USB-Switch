@@ -117,6 +117,11 @@ const Entry kStrings[] = {
 
     // Settings dialog
     {StrId::SettingsTitle, L"USB-Switch 设置", L"USB-Switch Settings"},
+    {StrId::SettingsHeading, L"偏好设置", L"Preferences"},
+    {StrId::SettingsBehavior, L"启动、通知与弹出", L"Startup and removal"},
+    {StrId::SettingsInput, L"语言与快捷键", L"Language and shortcut"},
+    {StrId::DialogSave, L"保存", L"Save"},
+    {StrId::ManageDevices, L"管理设备", L"Manage devices"},
     {StrId::SettingsStartup, L"登录 Windows 时自动运行", L"Run when I sign in to Windows"},
     {StrId::SettingsNotify, L"显示设备插入 / 拔出通知", L"Show device connect / disconnect notifications"},
     {StrId::SettingsConfirm, L"弹出前显示确认对话框", L"Ask for confirmation before removing"},

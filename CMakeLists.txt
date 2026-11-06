@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(usb-switch
-    VERSION 1.5.0
+    VERSION 1.5.1
     DESCRIPTION "USB-Switch - USB safe removal tray tool"
     LANGUAGES CXX RC)
 
