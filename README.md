@@ -12,7 +12,15 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
-## 1.5.1：托盘菜单与窗口布局
+## 当前版本：1.0.0
+
+在「设置 → 界面与输入 → 外观模式」可选择跟随系统、浅色或深色。切换会即时预览，点击保存后应用到其他应用内对话框。打开窗口或切换外观时，标题区会短暂亮起；Windows 关闭动画或启用高对比度时不会播放。托盘弹出菜单及系统提示框沿用 Windows 样式。
+
+打开设备通知后，插入或断开设备会在主显示器工作区右下角出现一张短暂的通知卡片，显示设备名称。卡片不抢焦点；关闭系统动画时静态显示。高对比度或系统报告当前不宜显示通知时，交给 Windows 原生通知处理。
+
+以下版本号为重设版本前的开发记录。
+
+### 1.5.1：托盘菜单与窗口布局
 
 日常弹出和退卡操作保留在托盘主菜单。展开“管理设备”可设置别名、隐藏设备或恢复显示。设置窗口把启动、通知和弹出确认放在一组，语言和快捷键放在另一组；选择“保存”后生效。
 
@@ -30,7 +38,7 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 ## 1.3.1：重新连接刚弹出的设备（实验功能）
 
-用托盘安全弹出设备后，如果还没有拔下，可打开托盘菜单选择“重新连接：设备名”。程序只记住本次运行中最后一次成功弹出的设备；退出程序即清除记录。Windows 必须仍将原节点标记为已准备弹出。若需要管理员权限，可以选择打开系统授权提示，或取消并手动拔插。对于可定位到集线器端口的 USB 存储设备，系统授权提示显示 USB-Switch；程序在授权后重新核对端口上的驱动标识及设备停止状态，仅重新连接对应端口。不能确认端口时，仍只尝试按原节点重启，授权时使用系统 PnPUtil。授权命令运行期间不能重复提交。若命令返回错误，托盘显示 Windows 错误及编号；若命令成功但原磁盘十秒内仍未出现在列表中，托盘会提示刷新或手动拔插。此功能尚未包含在 1.2.0 安装包内。
+用托盘安全弹出设备后，如果还没有拔下，可打开托盘菜单选择“重新连接：设备名”。程序只记住本次运行中最后一次成功弹出的设备；退出程序即清除记录。Windows 必须仍将原节点标记为已准备弹出。若需要管理员权限，可以选择打开系统授权提示，或取消并手动拔插。对于可定位到集线器端口的 USB 存储设备，系统授权提示显示 USB-Switch；程序在授权后重新核对端口上的驱动标识及设备停止状态，仅重新连接对应端口。不能确认端口时，仍只尝试按原节点重启，授权提示同样显示 USB-Switch；授权完成后会重新枚举磁盘，核对原磁盘与目标节点的关系，并在重启前再次检查节点是否仍处于已弹出状态。如果磁盘已恢复在线或身份无法核实，会停止重连。授权命令运行期间不能重复提交。若命令返回错误，托盘显示 Windows 错误及编号；若命令成功但原磁盘十秒内仍未出现在列表中，托盘会提示刷新或手动拔插。此功能尚未包含在 1.2.0 安装包内。
 
 已在 ASolid ESD-USB 实测完整托盘流程：普通权限安全弹出 → 管理员授权 → 原磁盘实例和原卷重新出现，文件目录可读；同一台机器上的双槽读卡器仍可读。1.3.0 在这只 U 盘上返回 3010，未能免拔插恢复。
 
@@ -167,7 +175,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.5.1 — removable devices
+USB-Switch 1.0.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```
