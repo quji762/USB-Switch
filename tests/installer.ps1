@@ -27,6 +27,9 @@ if (Get-Process usb-switch,quickeject -ErrorAction SilentlyContinue) { throw 'Ap
 function Install-TestApp {
     $process = Start-Process -FilePath $installerPath -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=`"$installDir`"") -Wait -PassThru
     if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $installDir 'usb-switch.exe'))) { throw "Installation failed: $($process.ExitCode)" }
+    $installedHash = (Get-FileHash -LiteralPath (Join-Path $installDir 'usb-switch.exe')).Hash
+    $buildHash = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot '..\dist\usb-switch.exe')).Hash
+    if ($installedHash -ne $buildHash) { throw 'Installer payload differs from the tested executable' }
     $license = Join-Path $installDir 'LICENSE'
     if (!(Test-Path -LiteralPath $license) -or (Get-FileHash $license).Hash -ne (Get-FileHash (Join-Path $PSScriptRoot '..\LICENSE')).Hash) { throw 'Installed license is missing or differs from source' }
 }
