@@ -27,6 +27,9 @@
 
 namespace qe {
 
+// Resolve an exact enumerated mount point, refusing ambiguous snapshots.
+std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_view input);
+
 class DeviceManager {
 public:
     using ChangeCallback = std::function<void()>;

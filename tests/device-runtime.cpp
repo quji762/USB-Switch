@@ -68,6 +68,21 @@ int main() {
 
     qe::Device folderOnly;
     folderOnly.mountPaths = {L"C:\\Mounts\\USB\\"};
+    folderOnly.instanceId = L"test-folder";
+    qe::Device host;
+    host.instanceId = L"test-host";
+    host.mountPaths = {L"C:\\"};
+    qe::DeviceList snapshot{host, folderOnly};
+    const auto matched = qe::FindByMountPath(snapshot, L"c:/Mounts/USB");
+    Check(matched && matched->instanceId == folderOnly.instanceId,
+          "exact folder mount selects its device instead of the host");
+    Check(!qe::FindByMountPath(snapshot, L"C:\\Mounts\\USB\\file.txt") &&
+          !qe::FindByMountPath(snapshot, L"C:\\Mounts") &&
+          !qe::FindByMountPath(snapshot, L"Mounts\\USB"),
+          "unlisted paths do not fall back to a host disk");
+    snapshot[0].mountPaths.push_back(folderOnly.mountPaths[0]);
+    Check(!qe::FindByMountPath(snapshot, folderOnly.mountPaths[0]),
+          "conflicting mount identities cannot select a device");
     const auto folderJson = qe::DeviceJson(folderOnly);
     const auto* folderPaths = folderJson.Find(L"mountPaths");
     Check(folderPaths && folderPaths->Size() == 1 &&

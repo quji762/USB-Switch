@@ -353,6 +353,32 @@ std::optional<Device> DeviceManager::FindByDriveLetter(std::wstring_view driveLe
     return std::nullopt;
 }
 
+std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_view input) {
+    // Accept only a listed absolute mount point. Do not resolve ancestors, junctions
+    // or relative paths: they can identify a different device than the user intended.
+    auto key = [](std::wstring_view path) {
+        std::wstring result(path);
+        for (auto& ch : result) if (ch == L'/') ch = L'\\';
+        if (result.size() < 3 || result[1] != L':' || result[2] != L'\\') return std::wstring{};
+        if (result[0] >= L'a' && result[0] <= L'z') result[0] -= L'a' - L'A';
+        if (result[0] < L'A' || result[0] > L'Z') return std::wstring{};
+        if (result.size() > 3 && result.back() == L'\\') result.pop_back();
+        return result;
+    };
+    const auto wanted = key(input);
+    if (wanted.empty()) return std::nullopt;
+    const Device* found = nullptr;
+    for (const auto& device : devices) {
+        for (const auto& path : device.mountPaths) {
+            if (key(path) != wanted) continue;
+            if (found && found->instanceId != device.instanceId) return std::nullopt;
+            found = &device;
+        }
+    }
+    if (found) return *found;
+    return std::nullopt;
+}
+
 std::optional<Device> DeviceManager::FindByInstanceId(std::wstring_view instanceId) const {
     for (const auto& device : devices_) {
         if (device.instanceId == instanceId) return device;

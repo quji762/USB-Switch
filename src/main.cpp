@@ -178,6 +178,7 @@ int RunEject(const std::wstring& target) {
         device = manager.FindByDriveLetter(drive);
     } else {
         device = manager.FindByInstanceId(target);
+        if (!device) device = FindByMountPath(manager.Devices(), target);
     }
     if (!device) {
         PrintLine(strings.Format(i18n::StrId::CliUnknownDevice, target));
