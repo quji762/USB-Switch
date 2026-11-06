@@ -248,15 +248,21 @@ void MainWindow::RefreshDevices() {
     const auto& strings = i18n::I18n::Instance();
     const bool notify = Settings::Instance().Data().showNotifications;
 
-    const auto before = previousNames_;
     if (!devices_.Refresh()) {
-        tray_.ShowBalloon(QUICKEJECT_APP_NAME_W, strings.Get(i18n::StrId::ErrorEnumFailed), NIIF_WARNING);
+        if (!scanRetryMs_ && notify)
+            tray_.ShowBalloon(QUICKEJECT_APP_NAME_W, strings.Get(i18n::StrId::MenuScanUnavailable), NIIF_WARNING);
+        scanRetryMs_ = scanRetryMs_ ? (std::min)(scanRetryMs_ * 2, 30000u) : 1000u;
+        SetTimer(hwnd_, kRescanTimerId, scanRetryMs_, nullptr);
+        RebuildTrayTip();
         return;
     }
 
+    scanRetryMs_ = 0;
+    KillTimer(hwnd_, kRescanTimerId);
+    const auto snapshot = devices_.Devices();
     if (!firstScan_) {
-        for (const auto& device : devices_.Devices()) {
-            if (before.find(device.instanceId) == before.end()) {
+        for (const auto& device : snapshot) {
+            if (previousNames_.find(device.instanceId) == previousNames_.end()) {
                 QE_LOG_INFO(L"device connected: %ls", device.displayName.c_str());
                 if (notify) {
                     tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,
@@ -264,7 +270,7 @@ void MainWindow::RefreshDevices() {
                 }
             }
         }
-        for (const auto& entry : before) {
+        for (const auto& entry : previousNames_) {
             if (!devices_.FindByInstanceId(entry.first)) {
                 QE_LOG_INFO(L"device disconnected: %ls", entry.second.c_str());
                 if (notify) {
@@ -277,7 +283,7 @@ void MainWindow::RefreshDevices() {
     firstScan_ = false;
 
     previousNames_.clear();
-    for (const auto& device : devices_.Devices()) {
+    for (const auto& device : snapshot) {
         previousNames_[device.instanceId] = device.displayName;
     }
     RebuildTrayTip();
@@ -296,8 +302,11 @@ void MainWindow::RestoreTrayIcon() {
 void MainWindow::RebuildTrayTip() {
     const auto& strings = i18n::I18n::Instance();
     std::wstring tooltip = strings.Get(i18n::StrId::AppTooltip);
-    if (!devices_.Devices().empty()) {
-        tooltip += str::Format(L" (%zu)", devices_.Devices().size());
+    if (scanRetryMs_) {
+        tooltip += L" — ";
+        tooltip += strings.Get(i18n::StrId::MenuScanUnavailable);
+    } else if (!previousNames_.empty()) {
+        tooltip += str::Format(L" (%zu)", previousNames_.size());
     }
     tray_.UpdateTooltip(tooltip);
 }
@@ -311,8 +320,10 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     }
 
     UINT itemPosition = 0;
-    const auto devices = devices_.Devices();
-    if (devices.empty()) {
+    const auto devices = scanRetryMs_ ? DeviceList{} : devices_.Devices();
+    if (scanRetryMs_) {
+        AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuScanUnavailable));
+    } else if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
         for (const auto& device : devices) {
@@ -355,7 +366,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     const auto id = static_cast<UINT>(command);
     if (id >= kDeviceCommandBase) {
         const auto index = id - kDeviceCommandBase;
-        if (index < devices.size()) EjectDevice(devices[index]);
+        if (!scanRetryMs_ && index < devices.size()) EjectDevice(devices[index]);
     } else {
         OnMenuCommand(id);
     }

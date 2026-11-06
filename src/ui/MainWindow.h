@@ -73,6 +73,7 @@ private:
     std::unordered_map<std::wstring, std::wstring> previousNames_;
     // Suppresses connect/disconnect balloons for the initial scan at startup.
     bool firstScan_ = true;
+    UINT scanRetryMs_ = 0;  // Nonzero while the last good snapshot is stale.
     bool trayCreationFailed_ = false;
     // True while icon_ came from LoadImage and must be destroyed.
     mutable bool ownsIcon_ = true;

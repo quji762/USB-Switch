@@ -14,6 +14,7 @@ enum class StrId {
 
     // Tray menu
     MenuDevices,
+    MenuScanUnavailable,
     MenuNoDevices,
     MenuEjectItem,
     MenuRefresh,

@@ -23,6 +23,7 @@ const Entry kStrings[] = {
 
     // Tray menu
     {StrId::MenuDevices, L"可移动设备(%1)", L"Removable devices (%1)"},
+    {StrId::MenuScanUnavailable, L"暂时无法读取设备列表，将自动重试", L"Device list unavailable; retrying automatically"},
     {StrId::MenuNoDevices, L"(没有可移动设备)", L"(no removable devices)"},
     {StrId::MenuEjectItem, L"%1 — 点击安全弹出", L"%1 — click to safely remove"},
     {StrId::MenuRefresh, L"刷新设备列表", L"Refresh device list"},
