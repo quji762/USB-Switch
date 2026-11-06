@@ -29,7 +29,7 @@ public:
     App(const App&) = delete;
     App& operator=(const App&) = delete;
 
-    InitStatus Init();
+    InitStatus Init(bool openSettings);
     int Run();
 
 private:

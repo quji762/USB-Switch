@@ -130,7 +130,10 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
             OnTrayNotify(wParam, lParam);
             return 0;
         case kWakeMessage:
-            HandleSecondInstance();
+            if (wParam == 1) {
+                if (IsWindowEnabled(hwnd)) OpenSettings();
+                else SetForegroundWindow(GetLastActivePopup(hwnd));
+            } else HandleSecondInstance();
             return 0;
         case WM_DESTROY:
             OnDestroy();

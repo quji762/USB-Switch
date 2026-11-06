@@ -26,7 +26,7 @@ public:
     ~SingleInstance() { Release(); }
 
     // Posts a "wake up" message to the running instance's window.
-    static void SignalExisting(std::wstring_view windowClassName);
+    static bool SignalExisting(std::wstring_view windowClassName, bool openSettings);
 
 private:
     HANDLE mutex_ = nullptr;

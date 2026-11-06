@@ -105,6 +105,7 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 
 ```powershell
 .\usb-switch.exe                # 启动托盘程序
+.\usb-switch.exe --settings     # 打开设置；已运行时使用已有实例
 .\usb-switch.exe --list         # 列出可移动设备（脚本/排障用）
 .\usb-switch.exe --eject E:     # 从命令行安全弹出
 .\usb-switch.exe --version

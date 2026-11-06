@@ -119,6 +119,7 @@ const Entry kStrings[] = {
      L"  --list            列出可移动设备后退出\n"
      L"  --list --json     以 JSON 数组输出设备列表\n"
      L"  --eject <目标>    按盘符、完整挂载路径或设备实例 ID 安全弹出\n"
+     L"  --settings        打开托盘程序的设置窗口\n"
      L"  --version         显示版本\n"
      L"  --help            显示本帮助\n"
      L"无参数时启动托盘程序。",
@@ -126,6 +127,7 @@ const Entry kStrings[] = {
      L"  --list            list removable devices and exit\n"
      L"  --list --json     output the device list as a JSON array\n"
      L"  --eject <target>  safely remove by drive, exact mount path or instance ID\n"
+     L"  --settings        open settings in the tray application\n"
      L"  --version         print version\n"
      L"  --help            show this help\n"
      L"Without options the tray application starts."},

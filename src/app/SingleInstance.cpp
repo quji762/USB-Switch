@@ -29,15 +29,21 @@ void SingleInstance::Release() noexcept {
     }
 }
 
-void SingleInstance::SignalExisting(std::wstring_view windowClassName) {
-    HWND existing = FindWindowW(std::wstring(windowClassName).c_str(), nullptr);
-    if (existing == nullptr) {
-        QE_LOG_WARN(L"single-instance window not found");
-        return;
+bool SingleInstance::SignalExisting(std::wstring_view windowClassName, bool openSettings) {
+    const std::wstring name(windowClassName);
+    HWND existing = FindWindowW(name.c_str(), nullptr);
+    // The first process can own the mutex before its tray window exists.
+    for (int i = 0; !existing && openSettings && i < 40; ++i) {
+        Sleep(50);
+        existing = FindWindowW(name.c_str(), nullptr);
     }
-    // AllowSetForegroundWindow is deliberately not called: we only ask the
-    // other instance to show a hint, we never steal focus.
-    PostMessageW(existing, kWakeMessage, 0, 0);
+    if (!existing) return false;
+    if (openSettings) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(existing, &pid);
+        if (pid) AllowSetForegroundWindow(pid);
+    }
+    return PostMessageW(existing, kWakeMessage, openSettings ? 1 : 0, 0) != FALSE;
 }
 
 }  // namespace qe

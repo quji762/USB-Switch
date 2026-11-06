@@ -34,6 +34,7 @@ struct Options {
     bool showHelp = false;
     bool showVersion = false;
     bool usageError = false;  // unknown switch or missing argument
+    bool openSettings = false;
     bool minimized = false;   // accepted (Run key), no effect: always tray resident
     std::wstring ejectTarget;  // drive letter ("E:") or PnP instance id
 };
@@ -57,6 +58,8 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
             options.showHelp = true;
         } else if (argument == L"--version" || argument == L"-v") {
             options.showVersion = true;
+        } else if (argument == L"--settings") {
+            options.openSettings = true;
         } else if (argument == L"--minimized") {
             options.minimized = true;
         } else if (isEject) {
@@ -236,7 +239,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
         exitCode = qe::RunEject(options.ejectTarget);
     } else {
         qe::App app(instance);
-        const qe::InitStatus status = app.Init();
+        const qe::InitStatus status = app.Init(options.openSettings);
         if (status == qe::InitStatus::Ok) {
             exitCode = app.Run();
         } else {

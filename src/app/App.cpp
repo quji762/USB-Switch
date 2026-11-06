@@ -38,7 +38,7 @@ App::App(HINSTANCE instance) : instance_(instance) {}
 
 App::~App() { Logger::Instance().Shutdown(); }
 
-InitStatus App::Init() {
+InitStatus App::Init(bool openSettings) {
     // Logging, settings and localization are initialized by main() before the
     // App is constructed (the command line paths need them too), so they are
     // deliberately not repeated here: doing so would reopen the log file and
@@ -46,7 +46,8 @@ InitStatus App::Init() {
     // in every GUI run.
 
     if (!singleInstance_.Acquire(L"USB-Switch")) {
-        SingleInstance::SignalExisting(MainWindow::kClassName);
+        if (!SingleInstance::SignalExisting(MainWindow::kClassName, openSettings) && openSettings)
+            return InitStatus::FatalError;
         return InitStatus::AlreadyRunning;
     }
 
@@ -71,6 +72,8 @@ InitStatus App::Init() {
                 AutoStart::ClearIfMatches(L"QuickEject", legacy);
         }
     }
+
+    if (openSettings) PostMessageW(window_->Handle(), kWakeMessage, 1, 0);
 
     // Extension point: a real build queries the update channel here.
     GetUpdater().CheckAsync(nullptr);
