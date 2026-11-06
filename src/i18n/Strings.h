@@ -18,6 +18,8 @@ enum class StrId {
     MenuEjectItem,
     MenuRefresh,
     MenuSettings,
+    MenuLogs,
+    LogOpenFailed,
     MenuAbout,
     MenuExit,
 

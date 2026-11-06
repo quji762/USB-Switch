@@ -7,6 +7,8 @@
 // Run:  .\tools\run-tests.ps1 -Runtime
 #include <windows.h>
 #include <stdio.h>
+#include <filesystem>
+#include <fstream>
 
 #include "app/Logger.h"
 #include "app/AutoStart.h"
@@ -62,6 +64,20 @@ static void PrintW(const wchar_t* text) {
 int main() {
     WriteOut("Device enumeration (runtime)\n");
 
+    namespace fs = std::filesystem;
+    const auto root = fs::temp_directory_path() /
+        (L"USB-Switch-log-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+    if (!fs::create_directory(root)) return 1;
+    const auto log = root / L"rotation.log";
+    { std::ofstream seed(log, std::ios::binary); seed.seekp((1 << 20) - 2); seed.put('x'); }
+    qe::Logger::Instance().Init(root.wstring(), L"rotation.log");
+    QE_LOG_INFO(L"cross rotation threshold");
+    QE_LOG_INFO(L"first line after rotation");
+    qe::Logger::Instance().Shutdown();
+    const fs::path backup = root / L"rotation.log.old";
+    Check(fs::exists(backup) && fs::file_size(backup) >= (1 << 20) &&
+          fs::file_size(log) > 0 && fs::file_size(log) < 1024, "log rotates before restart and continues writing");
+    fs::remove(backup); fs::remove(log); fs::remove(root);
     qe::Logger::Instance().Init(L"");  // no log file: this is a test, not the app
     qe::Settings::Instance().Load();
     qe::i18n::I18n::Instance().Init(L"en");

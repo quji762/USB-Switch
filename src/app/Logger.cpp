@@ -39,6 +39,8 @@ Logger& Logger::Instance() {
 void Logger::Init(const std::wstring& directory, std::wstring_view baseName) {
     std::lock_guard<std::mutex> lock(mutex_);
     CloseFileLocked();
+    path_.clear();
+    retryRotationAfter_ = 0;
     if (directory.empty()) return;
     CreateDirectories(directory);
     path_ = directory;
@@ -79,6 +81,7 @@ void Logger::Log(LogLevel level, const wchar_t* format, ...) {
     const std::wstring line =
         str::Format(L"%ls [%ls] %ls", Timestamp().c_str(), LevelTag(level), message.c_str());
     std::lock_guard<std::mutex> lock(mutex_);
+    RotateIfNeededLocked();
     WriteLineLocked(line);
 }
 
@@ -86,6 +89,7 @@ void Logger::RotateIfNeededLocked() {
     if (file_ == nullptr) return;
     LARGE_INTEGER size{};
     if (!GetFileSizeEx(static_cast<HANDLE>(file_), &size)) return;
+    if (GetTickCount64() < retryRotationAfter_) return;
     if (size.QuadPart < static_cast<LONGLONG>(kMaxFileBytes)) return;
 
     CloseHandle(static_cast<HANDLE>(file_));
@@ -101,7 +105,11 @@ void Logger::RotateIfNeededLocked() {
         OutputDebugStringW(str::Format(L"USB-Switch: could not rotate %ls to %ls (%lu)",
                                        path_.c_str(), backup.c_str(), GetLastError())
                                .c_str());
-        path_.clear();
+        HANDLE append = CreateFileW(path_.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
+                                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (append != INVALID_HANDLE_VALUE) file_ = append;
+        else path_.clear();
+        retryRotationAfter_ = GetTickCount64() + 60000;
         return;
     }
 

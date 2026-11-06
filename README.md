@@ -129,6 +129,8 @@ USB-Switch 1.0.1 — removable devices
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```
 
+排查问题时，从托盘菜单选择“打开日志文件夹”。托盘和命令行分别写入 `usb-switch.log` 和 `usb-switch-cli.log`，各自保留上一份 `.old`。日志可能包含设备名称和实例 ID，分享前请检查内容。
+
 ## 设置 / Settings
 
 `%APPDATA%\USB-Switch\settings.json`：

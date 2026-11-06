@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 
 #include <windows.h>
+#include <shellapi.h>
 #include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include <algorithm>
@@ -31,6 +32,7 @@ constexpr UINT kTrayMessage = WM_APP + 2;
 constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
 constexpr UINT kCommandSettings = 0x2002;
+constexpr UINT kCommandLogs = 0x2005;
 constexpr UINT kCommandAbout = 0x2003;
 constexpr UINT kCommandExit = 0x2004;
 
@@ -327,6 +329,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
     AppendMenuW(menu, MF_STRING, kCommandSettings, strings.Get(i18n::StrId::MenuSettings));
+    AppendMenuW(menu, MF_STRING, kCommandLogs, strings.Get(i18n::StrId::MenuLogs));
     AppendMenuW(menu, MF_STRING, kCommandAbout, strings.Get(i18n::StrId::MenuAbout));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCommandExit, strings.Get(i18n::StrId::MenuExit));
@@ -363,6 +366,16 @@ void MainWindow::OnMenuCommand(UINT commandId) {
         case kCommandSettings:
             OpenSettings();
             return;
+        case kCommandLogs: {
+            const auto path = Logger::Instance().Path();
+            const auto sep = path.find_last_of(L"\\/");
+            if (sep == path.npos || reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd_, L"open",
+                    path.substr(0, sep).c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
+                MessageBoxW(hwnd_, i18n::I18n::Instance().Get(i18n::StrId::LogOpenFailed),
+                            QUICKEJECT_APP_NAME_W, MB_OK | MB_ICONWARNING);
+            }
+            return;
+        }
         case kCommandAbout:
             OpenAbout();
             return;

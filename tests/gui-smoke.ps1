@@ -35,6 +35,13 @@ try {
     if ($owner -ne $process.Id) { throw 'Tray window belongs to another process' }
     $second = Start-Process -FilePath $exePath -PassThru
     if (!$second.WaitForExit(10000) -or $second.ExitCode -ne 0 -or $process.HasExited) { throw 'Second-instance handling failed' }
+    $logDir = Join-Path $env:LOCALAPPDATA 'USB-Switch\logs'
+    $target = 'USB-Switch-unused-private-target'
+    & $exePath --eject $target | Out-Null
+    if ($LASTEXITCODE -ne 2) { throw 'Expected unknown target during CLI logging check' }
+    $cliLog = Get-Content -Raw -LiteralPath (Join-Path $logDir 'usb-switch-cli.log')
+    if ($cliLog -notmatch 'starting \(CLI\)' -or $cliLog.Contains($target)) { throw 'CLI logging failed while tray was running or retained raw arguments' }
+    if (!(Test-Path -LiteralPath (Join-Path $logDir 'usb-switch.log'))) { throw 'Tray log missing' }
     if (![UsbSwitchGuiTest]::PostMessageW($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)) { throw 'Could not request window close' }
     if (!$process.WaitForExit(10000) -or $process.ExitCode -ne 0) { throw 'Application did not exit cleanly' }
     Write-Host 'GUI startup, single-instance handling and graceful shutdown passed'

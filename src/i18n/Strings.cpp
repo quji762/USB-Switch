@@ -27,6 +27,9 @@ const Entry kStrings[] = {
     {StrId::MenuEjectItem, L"%1 — 点击安全弹出", L"%1 — click to safely remove"},
     {StrId::MenuRefresh, L"刷新设备列表", L"Refresh device list"},
     {StrId::MenuSettings, L"设置…", L"Settings…"},
+    {StrId::MenuLogs, L"打开日志文件夹", L"Open log folder"},
+    {StrId::LogOpenFailed, L"无法打开日志文件夹。请检查本机用户目录的访问权限。",
+     L"Could not open the log folder. Check access to your local user directory."},
     {StrId::MenuAbout, L"关于 USB-Switch", L"About USB-Switch"},
     {StrId::MenuExit, L"退出", L"Exit"},
 

@@ -33,8 +33,7 @@ public:
     // compile error by design - all log formats are wide.
     void Log(LogLevel level, const wchar_t* format, ...);
 
-    const std::wstring& Path() const noexcept { return path_; }
-    bool IsOpen() const noexcept { return file_ != nullptr; }
+    std::wstring Path() { std::lock_guard<std::mutex> lock(mutex_); return file_ ? path_ : std::wstring{}; }
 
 private:
     Logger() = default;
@@ -45,6 +44,7 @@ private:
     void RotateIfNeededLocked();
     void CloseFileLocked();
 
+    unsigned long long retryRotationAfter_ = 0;
     std::wstring path_;
     void* file_ = nullptr;  // HANDLE, kept opaque so this header stays light
     std::mutex mutex_;

@@ -209,15 +209,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
     // Log and settings come first: even a CLI run should leave a trace and use
     // the configured language.
-    qe::Logger::Instance().Init(qe::LogDirectory());
-    QE_LOG_INFO(L"%ls starting, command line: %ls", QUICKEJECT_NAME_AND_VERSION_W,
-                GetCommandLineW());
-    qe::Settings::Instance().Load();
-    qe::i18n::I18n::Instance().Init(qe::Settings::Instance().Data().language);
-
     const bool commandLineAction =
         options.listDevices || options.showHelp || options.showVersion ||
         options.usageError || !options.ejectTarget.empty();
+    qe::Logger::Instance().Init(qe::LogDirectory(), commandLineAction ? L"usb-switch-cli.log" : L"usb-switch.log");
+    QE_LOG_INFO(L"%ls starting (%ls)", QUICKEJECT_NAME_AND_VERSION_W, commandLineAction ? L"CLI" : L"tray");
+    qe::Settings::Instance().Load();
+    qe::i18n::I18n::Instance().Init(qe::Settings::Instance().Data().language);
+
     if (commandLineAction && !qe::AttachOutput()) {
         QE_LOG_WARN(L"no output handle; command line output is unavailable");
     }
