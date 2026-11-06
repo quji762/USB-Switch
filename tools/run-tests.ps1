@@ -59,7 +59,7 @@ if (Test-Path $appInfo) { $includeDirs += $genDir }
     (Join-Path $root 'src\util\Str.cpp') `
     (Join-Path $root 'src\i18n\I18n.cpp') `
     (Join-Path $root 'src\i18n\Strings.cpp') `
-    -lsetupapi -lcfgmgr32 -lcomctl32 -lole32 -ladvapi32 -luser32 -lgdi32
+    -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lole32 -ladvapi32 -luser32 -lgdi32
 if ($LASTEXITCODE -ne 0) { throw "test build failed ($LASTEXITCODE)" }
 
 Write-Host "built $outExe" -ForegroundColor Cyan
@@ -89,7 +89,7 @@ if ($Runtime) {
         -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_CRT_SECURE_NO_WARNINGS `
         ($includeDirs | ForEach-Object { "-I$_" }) `
         -o $runtimeExe (Join-Path $root 'tests\device-runtime.cpp') @sources `
-        -lsetupapi -lcfgmgr32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
+        -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
     if ($LASTEXITCODE -ne 0) { throw "runtime test build failed ($LASTEXITCODE)" }
     Write-Host "built $runtimeExe" -ForegroundColor Cyan
     & $runtimeExe

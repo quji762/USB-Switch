@@ -43,6 +43,8 @@ const Entry kStrings[] = {
      L"“%1” has been stopped; it is safe to unplug now."},
     {StrId::EjectIneligible, L"无法确认此设备仍是可弹出的非系统磁盘。请刷新设备列表。",
      L"Could not verify this device is still an eligible non-system disk. Refresh the device list."},
+    {StrId::EventProcesses, L"Windows 事件记录的关联程序：", L"Processes reported by Windows for this removal:"},
+    {StrId::NoEventProcess, L"本次未从 Windows 事件中定位到具体程序。", L"No specific process was identified in Windows events for this removal."},
     {StrId::EjectFailTitle, L"弹出失败", L"Removal failed"},
     {StrId::EjectFailText, L"无法弹出“%1”。\n\n%2", L"Could not remove “%1”.\n\n%2"},
 

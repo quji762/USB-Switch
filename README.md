@@ -12,6 +12,10 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 1.1.0：弹出占用诊断
+
+弹出被拒绝时，托盘错误框和命令行会同时列出 Windows 为本次设备移除记录的关联程序名和 PID。错误框可用 Ctrl+C 复制，脚本可读 `--eject <目标> --json` 的 `reportedProcesses` 数组。只匹配本次请求期间、属于该磁盘或本次实际停止节点的 Kernel-PnP 225 事件；没有匹配记录或没有权限时，结果为空。这里的文件名是程序名，不是它打开的文档；不会读取命令行、关闭进程或强制解锁文件。
+
 ## 1.0.1 更新
 
 修复部分单磁盘 USB 设备可以识别、却无法弹出的问题。设备被占用时保留系统的拒绝原因；关闭占用文件后可重试。此版本也修复了托盘菜单的定位和键盘操作。
@@ -129,7 +133,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.0.1 — removable devices
+USB-Switch 1.1.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```
@@ -183,7 +187,7 @@ USB-Switch 1.0.1 — removable devices
 - 强制弹出（忽略 veto）**故意没有实现**：它会绕过硬件的安全停止流程，有数据
   损坏风险。要做的话应作为独立的、有明显警告的选项，并先尝试
   `FSCTL_DISMOUNT_VOLUME`。
-- 占用进程检测只报告 PnP 给出的 veto 程序名；要列出“所有打开句柄的进程”
+- 占用诊断结合 PnP 拒绝原因和本次系统事件记录，无法保证识别全部进程或具体文档；要列出“所有打开句柄的进程”
   需要枚举系统句柄（`NtQuerySystemInformation` + 提权），那是 2.0 的事。
 
 ## 开发 / Development

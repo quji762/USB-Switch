@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z]:?$')][string]$Drive,
     [Parameter(Mandatory)][string]$VolumeLabel,
     [string]$Exe = (Join-Path $PSScriptRoot '..\dist\usb-switch.exe'),
+    [switch]$RequireProcessEvidence,
     [switch]$PreflightOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +47,9 @@ try {
         if ($LASTEXITCODE -ne 1) { throw "Expected a rejected eject while file was open: $result" }
         $report = $result | ConvertFrom-Json
         if ($report.status -ne 'vetoed' -or $report.instanceId -cne $device.instanceId) { throw "Unexpected eject response: $result" }
+        if ($RequireProcessEvidence -and !($report.reportedProcesses | Where-Object pid -eq $PID)) {
+            throw 'The current test holder was not identified by the diagnostic'
+        }
         Write-Host 'Windows vetoed removal with the probe open'
     } finally { $handle.Dispose() }
     if ((Get-TestDevice).instanceId -cne $device.instanceId -or (Test-Path -LiteralPath $probe)) {

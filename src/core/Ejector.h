@@ -7,6 +7,7 @@
 // " ejection failed" and "Word is holding a file open on E:".
 
 #include <string>
+#include <vector>
 
 #include <windows.h>
 #include <cfgmgr32.h>
@@ -20,7 +21,10 @@ enum class EjectStatus {
     Failed,   // the call itself failed
 };
 
+struct ReportedProcess { DWORD pid; std::wstring name; };
+
 struct EjectResult {
+    std::vector<ReportedProcess> reportedProcesses;
     EjectStatus status = EjectStatus::Failed;
     CONFIGRET configRet = CR_SUCCESS;
     PNP_VETO_TYPE vetoType = PNP_VetoTypeUnknown;

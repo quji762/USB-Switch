@@ -1,6 +1,7 @@
 #include "core/Ejector.h"
 #include "core/DeviceManager.h"
 #include "core/RemovalTarget.h"
+#include "core/VetoEvents.h"
 
 #include <iterator>
 
@@ -69,8 +70,13 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
 
     PNP_VETO_TYPE vetoType = PNP_VetoTypeUnknown;
     WCHAR vetoName[MAX_PATH] = L"";
+    const DEVINST target = detail::RemovalTarget(devInst);
+    WCHAR targetId[MAX_DEVICE_ID_LEN]{};
+    if (CM_Get_Device_IDW(target, targetId, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS) targetId[0] = 0;
+    FILETIME start{};
+    GetSystemTimePreciseAsFileTime(&start);
     const CONFIGRET configRet = CM_Request_Device_EjectW(
-        detail::RemovalTarget(devInst), &vetoType, vetoName, static_cast<ULONG>(std::size(vetoName)), 0);
+        target, &vetoType, vetoName, static_cast<ULONG>(std::size(vetoName)), 0);
 
     result.configRet = configRet;
     result.vetoType = vetoType;
@@ -82,6 +88,9 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
     }
     if (configRet == CR_REMOVE_VETOED) {
         result.status = EjectStatus::Vetoed;
+        FILETIME end{};
+        GetSystemTimePreciseAsFileTime(&end);
+        result.reportedProcesses = ReadVetoEvents(instanceId, targetId, start, end);
         QE_LOG_WARN(L"eject vetoed (type %d, app \"%ls\")", static_cast<int>(vetoType), vetoName);
         return result;
     }
@@ -176,6 +185,15 @@ std::wstring Ejector::Describe(const EjectResult& result) {
         if (hasSuffix && !result.vetoApplication.empty()) {
             reason += L"\n\n";
             reason += strings.Format(suffixId, result.vetoApplication);
+        }
+        if (result.reportedProcesses.empty()) {
+            reason += L"\n\n";
+            reason += strings.Get(i18n::StrId::NoEventProcess);
+        } else {
+            reason += L"\n\n";
+            reason += strings.Get(i18n::StrId::EventProcesses);
+            for (const auto& process : result.reportedProcesses)
+                reason += str::Format(L"\n%ls (PID %lu)", process.name.c_str(), process.pid);
         }
         return reason;
     }

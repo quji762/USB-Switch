@@ -30,6 +30,8 @@ enum class StrId {
     EjectOkTitle,
     EjectOkText,
     EjectIneligible,
+    EventProcesses,
+    NoEventProcess,
     EjectFailTitle,
     EjectFailText,
 
