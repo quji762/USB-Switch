@@ -30,6 +30,8 @@ struct Device {
     // Stable PnP instance id, e.g.
     // "USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0".
     std::wstring instanceId;
+    std::wstring diskInterface;
+    std::vector<std::wstring> volumeInterfaces;
 
     // Text shown in the tray menu, e.g. "CRUZER (E:) — 14.6 GB".
     std::wstring displayName;

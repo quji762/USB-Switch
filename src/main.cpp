@@ -19,6 +19,7 @@
 #include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
+#include "core/MediaEject.h"
 #include "core/EjectJson.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
@@ -31,6 +32,7 @@ namespace {
 
 struct Options {
     bool listDevices = false;
+    bool mediaOnly = false;
     bool jsonOutput = false;
     bool showHelp = false;
     bool showVersion = false;
@@ -63,7 +65,8 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
             options.openSettings = true;
         } else if (argument == L"--minimized") {
             options.minimized = true;
-        } else if (isEject) {
+        } else if (isEject || argument == L"--eject-media") {
+            options.mediaOnly = argument == L"--eject-media";
             if (argument.rfind(L"--eject=", 0) == 0) {
                 options.ejectTarget = argument.substr(8);
             } else if (i + 1 < argc && argv[i + 1][0] != L'-') {
@@ -172,7 +175,7 @@ int RunListDevices(bool jsonOutput) {
     return 0;
 }
 
-int RunEject(const std::wstring& target, bool jsonOutput) {
+int RunEject(const std::wstring& target, bool jsonOutput, bool mediaOnly) {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
     if (!manager.Refresh()) {
@@ -193,6 +196,19 @@ int RunEject(const std::wstring& target, bool jsonOutput) {
         return 2;
     }
 
+    if (mediaOnly) {
+        const auto result = EjectMedia(*device);
+        if (jsonOutput) {
+            auto row = json::Value::Object();
+            row.Set(L"status", json::Value::String(result.stage));
+            row.Set(L"win32Error", json::Value::Number(result.error));
+            row.Set(L"instanceId", json::Value::String(device->instanceId));
+            PrintLine(row.Dump());
+        } else {
+            PrintLine(device->displayName + L": " + result.stage + L" (" + str::Win32ErrorMessage(result.error) + L")");
+        }
+        return result.error ? 1 : 0;
+    }
     const EjectResult result = Ejector::Eject(device->instanceId);
     if (jsonOutput) {
         PrintLine(EjectJson(result, device->instanceId).Dump());
@@ -245,7 +261,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     } else if (options.listDevices) {
         exitCode = qe::RunListDevices(options.jsonOutput);
     } else if (!options.ejectTarget.empty()) {
-        exitCode = qe::RunEject(options.ejectTarget, options.jsonOutput);
+        exitCode = qe::RunEject(options.ejectTarget, options.jsonOutput, options.mediaOnly);
     } else {
         qe::App app(instance);
         const qe::InitStatus status = app.Init(options.openSettings);

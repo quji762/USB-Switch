@@ -189,6 +189,7 @@ bool DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
         }
 
         DiskCandidate disk;
+        disk.diskInterface = detail->DevicePath;
         disk.devInst = deviceData.DevInst;
 
         WCHAR instanceId[512];
@@ -273,6 +274,7 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
 
         for (auto& disk : disks) {
             if (disk.deviceNumber == 0xFFFFFFFF || disk.deviceNumber != number.DeviceNumber) continue;
+            disk.volumeInterfaces.push_back(devicePath);
             if (driveType == DRIVE_REMOVABLE) disk.volumeIsRemovable = true;
             for (const WCHAR* mount = mountPoints.data(); *mount; mount += std::wcslen(mount) + 1) {
                 disk.mountPaths.emplace_back(mount);
@@ -364,6 +366,8 @@ bool DeviceManager::Refresh() {
 
         Device device;
         device.instanceId = disk.instanceId;
+        device.diskInterface = disk.diskInterface;
+        device.volumeInterfaces = disk.volumeInterfaces;
         device.devInst = disk.devInst;
         device.deviceNumber = disk.deviceNumber;
         device.busType = busType;

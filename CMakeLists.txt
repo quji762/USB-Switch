@@ -73,6 +73,7 @@ set(QUICKEJECT_SOURCES
     src/app/Updater.cpp
 
     src/core/DeviceManager.cpp
+    src/core/MediaEject.cpp
     src/core/DeviceNotifier.cpp
     src/core/VetoEvents.cpp
     src/core/Ejector.cpp

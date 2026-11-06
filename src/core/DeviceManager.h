@@ -74,6 +74,8 @@ private:
         bool removableMedia = false;
         std::optional<bool> driverMediaRemovable;
         std::wstring instanceId;
+        std::wstring diskInterface;
+        std::vector<std::wstring> volumeInterfaces;
         std::wstring friendlyName;
         std::wstring deviceDescription;
         std::wstring vendor;
