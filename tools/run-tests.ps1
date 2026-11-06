@@ -78,6 +78,12 @@ if ($LASTEXITCODE -ne 0) { throw "tray test build failed ($LASTEXITCODE)" }
 & $trayExe
 if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
 
+$mediaExe = Join-Path $root 'build\tests\media-partitions.exe'
+& $gxx -std=c++17 -O1 -Wall -Wextra "-I$root\src" -o $mediaExe (Join-Path $root 'tests\media-partitions.cpp') (Join-Path $root 'src\core\MediaEject.cpp')
+if ($LASTEXITCODE -ne 0) { throw "media partition test build failed ($LASTEXITCODE)" }
+& $mediaExe
+if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
+
 # --- optional: device enumeration against the real machine -------------------
 if ($Runtime) {
     Write-Host ''

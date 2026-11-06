@@ -8,11 +8,11 @@ namespace qe {
 namespace {
 using Ranges = std::set<std::pair<LONGLONG, LONGLONG>>;
 
-DWORD Layout(HANDLE disk, Ranges& ranges) {
+DWORD Layout(const MediaIo& io, HANDLE disk, Ranges& ranges) {
     for (size_t size = 4096; size <= 1024 * 1024; size *= 2) {
         std::vector<BYTE> data(size);
         DWORD bytes = 0;
-        if (!DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, nullptr, 0, data.data(),
+        if (!io.control(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, nullptr, 0, data.data(),
                              static_cast<DWORD>(size), &bytes, nullptr)) {
             DWORD error = GetLastError();
             if (error == ERROR_INSUFFICIENT_BUFFER || error == ERROR_MORE_DATA) continue;
@@ -38,26 +38,26 @@ DWORD Layout(HANDLE disk, Ranges& ranges) {
 }
 }
 
-MediaResult EjectMedia(const Device& device) {
+MediaResult EjectMedia(const Device& device, const MediaIo& io) {
     if (device.driverMediaRemovable != true || device.diskInterface.empty() || device.volumeInterfaces.empty())
         return {L"unsupported_media", ERROR_NOT_SUPPORTED};
     constexpr DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
-    Handle disk(CreateFileW(device.diskInterface.c_str(), 0, share, nullptr, OPEN_EXISTING, 0, nullptr));
+    Handle disk(io.open(device.diskInterface.c_str(), 0, share, nullptr, OPEN_EXISTING, 0, nullptr));
     if (!disk) return {L"open_disk", GetLastError()};
     DWORD bytes = 0;
     STORAGE_DEVICE_NUMBER id{};
-    if (!DeviceIoControl(disk.Get(), IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &id, sizeof(id), &bytes, nullptr))
+    if (!io.control(disk.Get(), IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &id, sizeof(id), &bytes, nullptr))
         return {L"disk_identity", GetLastError()};
     if (bytes < sizeof(id) || id.DeviceType != FILE_DEVICE_DISK || id.DeviceNumber != device.deviceNumber)
         return {L"disk_changed", ERROR_INVALID_DATA};
     Ranges expected, observed;
-    if (DWORD err = Layout(disk.Get(), expected)) return {L"disk_layout", err};
+    if (DWORD err = Layout(io, disk.Get(), expected)) return {L"disk_layout", err};
     std::vector<Handle> volumes;
     for (const auto& path : device.volumeInterfaces) {
-        Handle volume(CreateFileW(path.c_str(), GENERIC_READ, share, nullptr, OPEN_EXISTING, 0, nullptr));
+        Handle volume(io.open(path.c_str(), GENERIC_READ, share, nullptr, OPEN_EXISTING, 0, nullptr));
         if (!volume) return {L"open_volume", GetLastError()};
         VOLUME_DISK_EXTENTS ext{};
-        if (!DeviceIoControl(volume.Get(), IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, &ext, sizeof(ext), &bytes, nullptr))
+        if (!io.control(volume.Get(), IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, &ext, sizeof(ext), &bytes, nullptr))
             return {L"volume_extent", GetLastError()};
         if (bytes < sizeof(ext) || ext.NumberOfDiskExtents != 1 || ext.Extents[0].DiskNumber != id.DeviceNumber)
             return {L"volume_changed", ERROR_INVALID_DATA};
@@ -67,12 +67,12 @@ MediaResult EjectMedia(const Device& device) {
     }
     if (expected != observed) return {L"incomplete_volume_set", ERROR_NOT_SUPPORTED};
     for (const auto& volume : volumes)
-        if (!DeviceIoControl(volume.Get(), FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &bytes, nullptr))
+        if (!io.control(volume.Get(), FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &bytes, nullptr))
             return {L"lock_volume", GetLastError()};
     Ranges current;
-    if (DWORD err = Layout(disk.Get(), current)) return {L"disk_layout", err};
+    if (DWORD err = Layout(io, disk.Get(), current)) return {L"disk_layout", err};
     if (current != expected) return {L"disk_changed", ERROR_INVALID_DATA};
-    if (!DeviceIoControl(volumes.front().Get(), IOCTL_STORAGE_EJECT_MEDIA, nullptr, 0, nullptr, 0, &bytes, nullptr))
+    if (!io.control(volumes.front().Get(), IOCTL_STORAGE_EJECT_MEDIA, nullptr, 0, nullptr, 0, &bytes, nullptr))
         return {L"eject_media", GetLastError()};
     return {L"media_ejected", ERROR_SUCCESS};
 }
