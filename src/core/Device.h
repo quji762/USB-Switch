@@ -35,6 +35,7 @@ struct Device {
 
     std::wstring volumeLabel;    // "MY USB" or empty
     std::wstring driveLetters;   // "E:" / "E:, F:" or empty (no mount point)
+    std::vector<std::wstring> mountPaths;  // Drive roots and mounted folders.
     std::wstring vendor;         // from STORAGE_DEVICE_DESCRIPTOR
     std::wstring product;
 

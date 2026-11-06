@@ -27,6 +27,9 @@ inline json::Value DeviceJson(const Device& device) {
         remaining.remove_prefix(comma + 1);
     }
     row.Set(L"driveLetters", std::move(drives));
+    Value paths = Value::Array();
+    for (const auto& path : device.mountPaths) paths.Push(Value::String(path));
+    row.Set(L"mountPaths", std::move(paths));
     return row;
 }
 

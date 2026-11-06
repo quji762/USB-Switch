@@ -73,6 +73,7 @@ private:
         std::wstring product;
         std::wstring volumeLabel;
         std::wstring driveLetters;
+        std::vector<std::wstring> mountPaths;
         // True when a mounted volume on this disk reports DRIVE_REMOVABLE. Used
         // as a fallback for devices whose storage descriptor IOCTL failed.
         bool volumeIsRemovable = false;

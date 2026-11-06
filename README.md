@@ -112,7 +112,7 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 
 脚本可运行 `--list --json`。成功时输出 UTF-8 JSON 数组，没有设备时为 `[]`；
 枚举失败时返回退出码 1，并输出 `{"error":"enumeration_failed"}`。字段名不随界面语言变化。
-`driveLetters` 是盘符数组，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。
+`mountPaths` 列出已识别的挂载路径（含盘符根目录和文件夹），`driveLetters` 仅列出设备自身的盘符，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。
 
 ```powershell
 $devices = .\usb-switch.exe --list --json | Out-String | ConvertFrom-Json
@@ -168,7 +168,7 @@ USB-Switch 1.0.1 — removable devices
 - 只管理**可移动/USB 磁盘类设备**（U 盘、移动硬盘、读卡器）。USB 光驱不在当前磁盘接口枚举范围内。
   手机（MTP）、打印机等非存储设备不在范围内。
 - 打开设备失败（极少见，如被安全软件拦截）的接口会被跳过，不会出现在列表里。
-- 仅识别直接挂载为盘符的卷；挂载到文件夹而没有盘符的卷不会显示盘符、卷标和容量。
+- 没有盘符、只挂载到文件夹的设备会显示挂载路径。命令行弹出这类设备时，请使用列表中的完整实例 ID。未挂载的卷不计入已挂载容量。
 - 强制弹出（忽略 veto）**故意没有实现**：它会绕过硬件的安全停止流程，有数据
   损坏风险。要做的话应作为独立的、有明显警告的选项，并先尝试
   `FSCTL_DISMOUNT_VOLUME`。

@@ -111,6 +111,9 @@ std::wstring DeviceManager::BuildDisplayName(const DiskCandidate& disk) {
         name += disk.driveLetters;
         name += L")";
     }
+    if (disk.driveLetters.empty() && !disk.mountPaths.empty()) {
+        name += L" (" + disk.mountPaths.front() + L")";
+    }
     if (disk.sizeBytes > 0) {
         name += L" — ";
         name += str::FileSizeString(disk.sizeBytes);
@@ -240,55 +243,37 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
             continue;
         }
 
-        bool capacityCounted = false;  // Several drive letters can refer to this volume.
-        for (const WCHAR* mount = mountPoints.data(); *mount != L'\0';
-             mount += std::wcslen(mount) + 1) {
-            std::wstring path(mount);
-            if (!str::IsDriveLetterMount(path)) continue;  // exclude directory mount points
+        if (!mountPoints[0]) continue;
+        const UINT driveType = GetDriveTypeW(volumeName);
+        if (driveType != DRIVE_REMOVABLE && driveType != DRIVE_FIXED) continue;
 
-            UINT driveType = GetDriveTypeW(path.c_str());
-            if (driveType != DRIVE_REMOVABLE && driveType != DRIVE_FIXED) continue;
+        // Without the trailing slash CreateFile opens the volume, not its root directory.
+        std::wstring devicePath(volumeName);
+        if (devicePath.empty() || devicePath.back() != L'\\') continue;
+        devicePath.pop_back();
+        Handle volume(CreateFileW(devicePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                  nullptr, OPEN_EXISTING, 0, nullptr));
+        STORAGE_DEVICE_NUMBER number{};
+        DWORD returned = 0;
+        if (!volume || !DeviceIoControl(volume.Get(), IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr,
+                0, &number, sizeof(number), &returned, nullptr) ||
+            returned < sizeof(number) || number.DeviceType != FILE_DEVICE_DISK) continue;
 
-            std::wstring devicePath = L"\\\\.\\" + path.substr(0, 2);
-            Handle volume(CreateFileW(devicePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                      nullptr, OPEN_EXISTING, 0, nullptr));
-            if (!volume) {
-                QE_LOG_DEBUG(L"cannot open volume %ls (%lu)", devicePath.c_str(), GetLastError());
-                continue;
-            }
-
-            STORAGE_DEVICE_NUMBER number{};
-            DWORD returned = 0;
-            if (!DeviceIoControl(volume.Get(), IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &number,
-                                 sizeof(number), &returned, nullptr)) {
-                continue;
-            }
-            if (number.DeviceType != FILE_DEVICE_DISK) continue;
-
-            for (auto& disk : disks) {
-                if (disk.deviceNumber == 0xFFFFFFFF || disk.deviceNumber != number.DeviceNumber) {
-                    continue;
-                }
+        for (auto& disk : disks) {
+            if (disk.deviceNumber == 0xFFFFFFFF || disk.deviceNumber != number.DeviceNumber) continue;
+            if (driveType == DRIVE_REMOVABLE) disk.volumeIsRemovable = true;
+            for (const WCHAR* mount = mountPoints.data(); *mount; mount += std::wcslen(mount) + 1) {
+                disk.mountPaths.emplace_back(mount);
+                if (!str::IsDriveLetterMount(mount)) continue;
                 if (!disk.driveLetters.empty()) disk.driveLetters += L", ";
-                disk.driveLetters += path.substr(0, 2);
-                if (driveType == DRIVE_REMOVABLE) disk.volumeIsRemovable = true;
-
-                WCHAR label[MAX_PATH + 1] = L"";
-                if (GetVolumeInformationW(path.c_str(), label, MAX_PATH + 1, nullptr, nullptr, nullptr,
-                                          nullptr, 0) &&
-                    label[0] != L'\0' && disk.volumeLabel.empty()) {
-                    disk.volumeLabel = label;
-                }
-
-                ULARGE_INTEGER totalBytes{};
-                if (!capacityCounted && GetDiskFreeSpaceExW(path.c_str(), nullptr, &totalBytes, nullptr) &&
-                    totalBytes.QuadPart > 0) {
-                    // Count each enumerated volume once while retaining all its drive letters.
-                    disk.sizeBytes += static_cast<uint64_t>(totalBytes.QuadPart);
-                    capacityCounted = true;
-                }
-                break;  // one volume belongs to at most one disk candidate
+                disk.driveLetters.append(mount, 2);
             }
+            WCHAR label[MAX_PATH + 1]{};
+            if (disk.volumeLabel.empty() && GetVolumeInformationW(volumeName, label, MAX_PATH + 1,
+                    nullptr, nullptr, nullptr, nullptr, 0)) disk.volumeLabel = label;
+            ULARGE_INTEGER total{};
+            if (GetDiskFreeSpaceExW(volumeName, nullptr, &total, nullptr)) disk.sizeBytes += total.QuadPart;
+            break;
         }
     } while (api_.findNextVolume(find, volumeName, static_cast<DWORD>(std::size(volumeName))));
     const DWORD lastError = GetLastError();
@@ -332,6 +317,7 @@ bool DeviceManager::Refresh() {
         device.removable = disk.removableMedia || disk.volumeIsRemovable || isUsb;
         device.volumeLabel = disk.volumeLabel;
         device.driveLetters = disk.driveLetters;
+        device.mountPaths = disk.mountPaths;
         device.sizeBytes = disk.sizeBytes;
         device.vendor = disk.vendor;
         device.product = disk.product;

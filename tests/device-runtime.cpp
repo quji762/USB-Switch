@@ -66,6 +66,15 @@ int main() {
     qe::Settings::Instance().Load();
     qe::i18n::I18n::Instance().Init(L"en");
 
+    qe::Device folderOnly;
+    folderOnly.mountPaths = {L"C:\\Mounts\\USB\\"};
+    const auto folderJson = qe::DeviceJson(folderOnly);
+    const auto* folderPaths = folderJson.Find(L"mountPaths");
+    Check(folderPaths && folderPaths->Size() == 1 &&
+          folderPaths->Items()[0].AsString() == folderOnly.mountPaths[0] &&
+          folderJson.Find(L"driveLetters")->Size() == 0,
+          "folder-mounted device exports its mount path without a host drive letter");
+
     qe::DeviceManager manager;
     // Exercise populated output even on a runner with no USB drives attached.
     qe::Device sample;
