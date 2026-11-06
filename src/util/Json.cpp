@@ -14,6 +14,11 @@ namespace {
 
 const std::wstring kEmptyString;
 
+// Objects and arrays recurse into ParseValue. A hand-edited or corrupted
+// settings file full of "[[[[[[..." would otherwise exhaust the stack, so the
+// nesting depth is bounded. Real settings never come close to this.
+constexpr int kMaxDepth = 64;
+
 void AppendEscaped(std::wstring& out, std::wstring_view text) {
     out.push_back(L'"');
     for (wchar_t c : text) {
@@ -78,9 +83,14 @@ private:
 
     bool ParseValue(Value& out) {
         if (pos_ >= text_.size()) return false;
-        wchar_t c = text_[pos_];
-        if (c == L'{') return ParseObject(out);
-        if (c == L'[') return ParseArray(out);
+        const wchar_t c = text_[pos_];
+        if (c == L'{' || c == L'[') {
+            if (depth_ >= kMaxDepth) return false;  // stack-overflow guard
+            ++depth_;
+            const bool ok = (c == L'{') ? ParseObject(out) : ParseArray(out);
+            --depth_;
+            return ok;
+        }
         if (c == L'"') {
             std::wstring text;
             if (!ParseString(text)) return false;
@@ -270,6 +280,7 @@ private:
 
     std::wstring_view text_;
     size_t pos_ = 0;
+    int depth_ = 0;
 };
 
 }  // namespace

@@ -44,14 +44,26 @@ const wchar_t* I18n::Get(StrId id) const {
 
 std::wstring I18n::Format(StrId id, std::wstring_view a1, std::wstring_view a2,
                           std::wstring_view a3) const {
-    std::wstring text = Get(id);
-    const wchar_t* placeholders[] = {L"%1", L"%2", L"%3"};
+    const std::wstring_view text = Get(id);
     const std::wstring_view values[] = {a1, a2, a3};
-    for (int i = 0; i < 3; ++i) {
-        if (text.find(placeholders[i]) == std::wstring::npos) continue;
-        text = str::ReplaceAll(text, placeholders[i], values[i]);
+
+    // Single pass: a sequential ReplaceAll per placeholder would re-substitute
+    // inside an argument's own text (a volume label such as "disk%2" would be
+    // mangled), because the injected content is scanned again by later passes.
+    std::wstring out;
+    out.reserve(text.size() + 16);
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == L'%' && i + 1 < text.size()) {
+            const wchar_t digit = text[i + 1];
+            if (digit >= L'1' && digit <= L'3') {
+                out.append(values[static_cast<size_t>(digit - L'1')]);
+                ++i;  // consume the digit
+                continue;
+            }
+        }
+        out.push_back(text[i]);
     }
-    return text;
+    return out;
 }
 
 }  // namespace qe::i18n
