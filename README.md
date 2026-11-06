@@ -12,6 +12,10 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 开发版：重新连接刚弹出的设备（实验功能）
+
+用托盘安全弹出设备后，如果还没有拔下，可打开托盘菜单选择“重新连接：设备名”。程序只记住本次运行中最后一次成功弹出的设备；退出程序即清除记录。Windows 必须仍将原节点标记为已准备弹出。若需要管理员权限，可以选择打开系统授权提示，或取消并手动拔插。授权步骤使用 Windows 自带的 `pnputil /restart-device` 针对原实例 ID 操作。设备列表重新出现原磁盘才表示检测到了它；超过十秒仍未检测到会提示手动拔插。此功能尚未包含在 1.2.0 安装包内。
+
 ## 开发版：只退出介质（实验功能）
 
 要换读卡器里的卡，可在托盘选择 **只退出介质 → 目标设备**，核对卷标、盘符后选“是”。对话框默认选“否”。这个菜单按驱动报告的介质属性列出候选项，普通 U 盘也可能出现；若要拔下整个设备，请用主菜单的安全弹出。此功能尚未包含在 1.2.0 安装包内。

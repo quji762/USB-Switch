@@ -32,6 +32,7 @@ constexpr UINT kTrayMessage = WM_APP + 2;
 // Device commands index the snapshot belonging to this popup.
 constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
+constexpr UINT kCommandReconnect = 0x2006;
 constexpr UINT kCommandSettings = 0x2002;
 constexpr UINT kAliasBase = 0x100000;
 constexpr UINT kMediaBase = 0x200000;
@@ -44,6 +45,7 @@ constexpr UINT kCommandExit = 0x2004;
 // interface, volume, device tree); a short timer collapses them into one scan.
 constexpr UINT_PTR kRescanTimerId = 1;
 constexpr UINT_PTR kTrayRetryTimerId = 2;
+constexpr UINT_PTR kReconnectTimer = 3;
 constexpr UINT kRescanDelayMs = 250;
 
 }  // namespace
@@ -114,6 +116,16 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
             if (wParam == kMenuHotkey && IsWindowEnabled(hwnd) && !menuOpen_) ShowTrayMenu();
             return 0;
         case WM_TIMER:
+            if (wParam == kReconnectTimer) {
+                RefreshDevices();
+                if (reconnectDeadline_ && GetTickCount64() >= reconnectDeadline_) {
+                    KillTimer(hwnd_, kReconnectTimer);
+                    reconnectDeadline_ = 0;
+                    MessageBoxW(hwnd_, i18n::I18n::Instance().Get(i18n::StrId::ReconnectTimeout),
+                                QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
+                }
+                return 0;
+            }
             if (wParam == kRescanTimerId) OnRescanTimer();
             else if (wParam == kTrayRetryTimerId) RestoreTrayIcon();
             return 0;
@@ -269,6 +281,12 @@ void MainWindow::RefreshDevices() {
     scanRetryMs_ = 0;
     KillTimer(hwnd_, kRescanTimerId);
     const auto snapshot = devices_.Devices();
+    if (!stoppedDisk_.empty() && devices_.FindByInstanceId(stoppedDisk_)) {
+        stoppedDisk_.clear();
+        stoppedTarget_.clear();
+        reconnectDeadline_ = 0;
+        KillTimer(hwnd_, kReconnectTimer);
+    }
     if (!firstScan_) {
         for (const auto& device : snapshot) {
             if (previousNames_.find(device.instanceId) == previousNames_.end()) {
@@ -363,6 +381,15 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         DestroyMenu(media);
     if (aliases && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
         DestroyMenu(aliases);
+    const auto reconnectTarget = stoppedTarget_;
+    if (!reconnectTarget.empty()) {
+        std::wstring caption;
+        for (wchar_t ch : strings.Format(i18n::StrId::ReconnectDevice, stoppedName_)) {
+            if (ch == L'&') caption += ch;
+            caption += ch;
+        }
+        AppendMenuW(menu, MF_STRING | (reconnectDeadline_ ? MF_GRAYED : 0), kCommandReconnect, caption.c_str());
+    }
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
     AppendMenuW(menu, MF_STRING, kCommandSettings, strings.Get(i18n::StrId::MenuSettings));
     AppendMenuW(menu, MF_STRING, kCommandLogs, strings.Get(i18n::StrId::MenuLogs));
@@ -388,7 +415,45 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     if (!hwnd_ || command == 0) return;
     const auto id = static_cast<UINT>(command);
-    if (id >= kMediaBase) {
+    if (id == kCommandReconnect && !reconnectTarget.empty() && reconnectTarget == stoppedTarget_) {
+        auto error = Ejector::RestartStopped(stoppedDisk_, stoppedTarget_);
+        if (error == ERROR_ACCESS_DENIED && Ejector::HeldForEject(reconnectTarget)) {
+            if (MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectAdmin, stoppedName_).c_str(),
+                            QUICKEJECT_APP_NAME_W, MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
+            if (stoppedTarget_ != reconnectTarget || !Ejector::HeldForEject(reconnectTarget)) {
+                RefreshDevices();
+                return;
+            }
+            WCHAR system[MAX_PATH]{};
+            UINT length = GetSystemDirectoryW(system, MAX_PATH);
+            if (!length || length >= MAX_PATH || reconnectTarget.find_first_of(L"\"*?") != reconnectTarget.npos ||
+                reconnectTarget.back() == L'\\') error = ERROR_INVALID_DATA;
+            else {
+                const std::wstring exe = std::wstring(system) + L"\\pnputil.exe";
+                const std::wstring args = L"/restart-device \"" + reconnectTarget + L"\"";
+                SHELLEXECUTEINFOW run{};
+                run.cbSize = sizeof(run);
+                run.hwnd = hwnd_;
+                run.lpVerb = L"runas";
+                run.lpFile = exe.c_str();
+                run.lpParameters = args.c_str();
+                run.nShow = SW_HIDE;
+                error = ShellExecuteExW(&run) ? ERROR_SUCCESS : GetLastError();
+                if (error == ERROR_CANCELLED) return;
+            }
+        }
+        if (error == ERROR_SUCCESS) {
+            reconnectDeadline_ = GetTickCount64() + 10000;
+            if (!SetTimer(hwnd_, kReconnectTimer, 500, nullptr)) {
+                reconnectDeadline_ = 0;
+                MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectTimeout), QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
+            }
+        } else {
+            MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectFailed, str::Win32ErrorMessage(error)).c_str(),
+                        QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
+        }
+        RefreshDevices();
+    } else if (id >= kMediaBase) {
         const auto index = id - kMediaBase;
         if (!scanRetryMs_ && index < devices.size()) EjectMedium(devices[index]);
     } else if (id >= kAliasBase) {
@@ -483,6 +548,11 @@ void MainWindow::EjectDevice(const Device& device) {
         QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
         const EjectResult result = Ejector::Eject(instanceId);
         if (result.Succeeded()) {
+            KillTimer(hwnd_, kReconnectTimer);
+            reconnectDeadline_ = 0;
+            stoppedDisk_ = instanceId;
+            stoppedTarget_ = result.stoppedInstanceId;
+            stoppedName_ = displayName;
             QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
             if (settings.showNotifications) {
                 tray_.ShowBalloon(strings.Get(i18n::StrId::EjectOkTitle),

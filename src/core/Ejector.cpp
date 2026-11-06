@@ -4,6 +4,9 @@
 #include "core/VetoEvents.h"
 
 #include <iterator>
+#include <setupapi.h>
+#include <cfg.h>
+#include "util/Win32.h"
 
 #include "app/Logger.h"
 #include "i18n/I18n.h"
@@ -84,6 +87,7 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
 
     if (configRet == CR_SUCCESS) {
         result.status = EjectStatus::Success;
+        result.stoppedInstanceId = targetId;
         return result;
     }
     if (configRet == CR_REMOVE_VETOED) {
@@ -100,6 +104,41 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
     QE_LOG_ERROR(L"CM_Request_Device_Eject failed: CONFIGRET 0x%02lX (Win32 %lu)", configRet,
                  result.win32Error);
     return result;
+}
+
+bool Ejector::HeldForEject(const std::wstring& targetId) {
+    auto id = targetId;
+    DEVINST node{};
+    ULONG status{}, problem{};
+    return !id.empty() && CM_Locate_DevNodeW(&node, id.data(), CM_LOCATE_DEVNODE_NORMAL) == CR_SUCCESS &&
+           CM_Get_DevNode_Status(&status, &problem, node, 0) == CR_SUCCESS && (status & DN_HAS_PROBLEM) &&
+           problem == CM_PROB_HELD_FOR_EJECT;
+}
+
+DWORD Ejector::RestartStopped(const std::wstring& diskId, const std::wstring& targetId) {
+    if (diskId.empty() || targetId.empty()) return ERROR_INVALID_PARAMETER;
+    DeviceManager live;
+    if (!live.Refresh()) return ERROR_GEN_FAILURE;
+    if (live.FindByInstanceId(diskId)) return ERROR_ALREADY_EXISTS;
+    DevInfoSet info(SetupDiCreateDeviceInfoList(nullptr, nullptr));
+    if (!info) return GetLastError();
+    SP_DEVINFO_DATA data{};
+    data.cbSize = sizeof(data);
+    if (!SetupDiOpenDeviceInfoW(info.Get(), targetId.c_str(), nullptr, 0, &data)) return GetLastError();
+    SP_PROPCHANGE_PARAMS change{};
+    change.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+    change.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+    change.StateChange = DICS_PROPCHANGE;
+    change.Scope = DICS_FLAG_CONFIGSPECIFIC;
+    if (!SetupDiSetClassInstallParamsW(info.Get(), &data, &change.ClassInstallHeader, sizeof(change))) return GetLastError();
+    ULONG status{}, problem{};
+    if (CM_Get_DevNode_Status(&status, &problem, data.DevInst, 0) != CR_SUCCESS ||
+        !(status & DN_HAS_PROBLEM) || problem != CM_PROB_HELD_FOR_EJECT) return ERROR_DEVICE_NOT_CONNECTED;
+    if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, info.Get(), &data)) return GetLastError();
+    SP_DEVINSTALL_PARAMS_W install{};
+    install.cbSize = sizeof(install);
+    if (!SetupDiGetDeviceInstallParamsW(info.Get(), &data, &install)) return GetLastError();
+    return install.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART) ? ERROR_SUCCESS_REBOOT_REQUIRED : ERROR_SUCCESS;
 }
 
 std::wstring Ejector::Describe(const EjectResult& result) {

@@ -24,6 +24,7 @@ enum class EjectStatus {
 struct ReportedProcess { DWORD pid; std::wstring name; };
 
 struct EjectResult {
+    std::wstring stoppedInstanceId; // Actual removal target, only after success.
     std::vector<ReportedProcess> reportedProcesses;
     EjectStatus status = EjectStatus::Failed;
     CONFIGRET configRet = CR_SUCCESS;
@@ -54,6 +55,9 @@ public:
     // Resolve the stable instance ID immediately before the request. A cached
     // DEVINST can go stale while a confirmation dialog is open.
     static EjectResult Eject(const std::wstring& instanceId);
+    // Restart only the exact node previously stopped by this tray session.
+    static DWORD RestartStopped(const std::wstring& diskId, const std::wstring& targetId);
+    static bool HeldForEject(const std::wstring& targetId);
 
     // Localized explanation of a non-successful result.
     static std::wstring Describe(const EjectResult& result);

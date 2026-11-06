@@ -58,6 +58,8 @@ private:
     void ApplyMenuHotkey();
     std::wstring registeredKey_;
     bool menuOpen_ = false;
+    std::wstring stoppedDisk_, stoppedTarget_, stoppedName_;
+    ULONGLONG reconnectDeadline_ = 0;
     void OpenSettings();
     void OpenAbout();
     HICON LoadTrayIcon() const;
