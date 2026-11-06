@@ -88,7 +88,9 @@ if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
 if ($Runtime) {
     Write-Host ''
     $sources = Get-ChildItem -Path (Join-Path $root 'src') -Filter '*.cpp' -Recurse |
-        Where-Object { $_.Name -ne 'main.cpp' -and $_.Name -ne 'App.cpp' } |
+        # This console test has no Common Controls v6 activation manifest.
+        # The separate GUI smoke test exercises the manifested tray binary.
+        Where-Object { $_.Name -ne 'main.cpp' -and $_.Name -ne 'App.cpp' -and $_.Directory.Name -ne 'ui' } |
         ForEach-Object { $_.FullName }
     & $gxx -std=c++17 -O1 -g -Wall -Wextra `
         -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE `
