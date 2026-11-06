@@ -6,7 +6,7 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 ## 第一次使用 / Quick start
 
-1. **启动：** 使用安装版时，从开始菜单打开 USB-Switch；使用便携版时，先将 ZIP 解压到电脑本地，再双击 `usb-switch.exe`。启动后没有主窗口，图标在任务栏时钟旁；看不到时，展开隐藏的托盘图标。
+1. **启动：** 安装向导可选简体中文或 English。应用首次启动跟随 Windows 界面语言，之后可在托盘的“设置”中更改。使用安装版时，从开始菜单打开 USB-Switch；使用便携版时，先将 ZIP 解压到电脑本地，再双击 `usb-switch.exe`。启动后没有主窗口，图标在任务栏时钟旁；看不到时，展开隐藏的托盘图标。
 2. **选择设备：** 保存并关闭 U 盘上的文件，点击托盘图标，按卷标和盘符核对设备，再选择“点击安全弹出”。默认会弹出确认框；选择“是”才会继续。
 3. **确认结果：** 默认设置下，看到“已安全弹出”即可拔出。若关闭了通知，可在菜单中刷新设备列表核对结果。若提示文件被占用，先保留设备连接，关闭相关文件或等待复制完成，再点“重试”。若错误框只有“确定”，请先按提示处理原因，再从菜单重新选择设备。
 
@@ -95,6 +95,8 @@ winget install MSYS2.MSYS2      # 然后 pacman -S mingw-w64-ucrt-x86_64-gcc min
 ```powershell
 iscc installer\usb-switch.iss     # 先跑 .\build.ps1，版本号从 exe 读取
 ```
+
+安装器使用 [Inno Setup 6.7.4 的简体中文翻译](https://github.com/jrsoftware/issrc/blob/is-6_7_4/Files/Languages/Unofficial/ChineseSimplified.isl)，翻译文件保留原作者署名及[随附许可](installer/languages/INNO-LICENSE.txt)。
 
 Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 [许可说明](https://jrsoftware.org/isorder.php)。

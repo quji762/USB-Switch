@@ -25,8 +25,11 @@ foreach ($name in @('USB-Switch', 'QuickEject')) {
 if (Get-Process usb-switch,quickeject -ErrorAction SilentlyContinue) { throw 'Application is running; test skipped.' }
 
 function Install-TestApp {
-    $process = Start-Process -FilePath $installerPath -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=`"$installDir`"") -Wait -PassThru
+    param([string]$Language = 'english')
+    $inf = Join-Path $testRoot "install-$Language.inf"
+    $process = Start-Process -FilePath $installerPath -ArgumentList @("/LANG=$Language", "/SAVEINF=`"$inf`"", '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=`"$installDir`"") -Wait -PassThru
     if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $installDir 'usb-switch.exe'))) { throw "Installation failed: $($process.ExitCode)" }
+    if ((Get-Content -LiteralPath $inf) -notcontains "Lang=$Language") { throw "Installer did not select $Language" }
     $installedHash = (Get-FileHash -LiteralPath (Join-Path $installDir 'usb-switch.exe')).Hash
     $buildHash = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot '..\dist\usb-switch.exe')).Hash
     if ($installedHash -ne $buildHash) { throw 'Installer payload differs from the tested executable' }
@@ -61,7 +64,7 @@ try {
     } finally {
         $legacyMutex.Dispose()
     }
-    Install-TestApp
+    Install-TestApp -Language chinesesimplified
     if (Test-Path -LiteralPath $oldExe) { throw 'Legacy executable survived upgrade' }
     if ((Get-ItemProperty -LiteralPath $runKey).QuickEject) { throw 'Legacy startup entry survived upgrade' }
     if ((Get-ItemProperty -LiteralPath $runKey).'USB-Switch' -ne $ownCommand) { throw 'Startup entry was not migrated' }
