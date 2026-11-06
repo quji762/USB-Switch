@@ -72,6 +72,7 @@ private:
         ULONG deviceNumber = 0xFFFFFFFF;
         ULONG storageBusType = 0xFFFFFFFF;  // STORAGE_BUS_TYPE value
         bool removableMedia = false;
+        std::optional<bool> driverMediaRemovable;
         std::wstring instanceId;
         std::wstring friendlyName;
         std::wstring deviceDescription;

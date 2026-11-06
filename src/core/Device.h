@@ -2,6 +2,7 @@
 // Device model shared by the enumerator, the tray UI and the CLI.
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ struct Device {
 
     BusType busType = BusType::Unknown;
     bool removable = false;
+    std::optional<bool> driverMediaRemovable;
     uint64_t sizeBytes = 0;
 
     // PnP instance handle used for the eject request. 0 means "cannot eject".

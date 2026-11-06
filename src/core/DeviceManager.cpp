@@ -71,6 +71,7 @@ bool QueryDisk(HANDLE handle, DiskQuery& out) {
         QE_LOG_DEBUG(L"IOCTL_STORAGE_GET_DEVICE_NUMBER failed: %lu", GetLastError());
         return false;
     }
+    if (returned < sizeof(number) || number.DeviceType != FILE_DEVICE_DISK) return false;
     out.deviceNumber = number.DeviceNumber;
 
     std::vector<BYTE> buffer(kDescriptorBufferSize);
@@ -78,12 +79,14 @@ bool QueryDisk(HANDLE handle, DiskQuery& out) {
     query.PropertyId = StorageDeviceProperty;
     query.QueryType = PropertyStandardQuery;
     if (DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
-                        static_cast<DWORD>(buffer.size()), &returned, nullptr)) {
+                        static_cast<DWORD>(buffer.size()), &returned, nullptr) &&
+        returned >= offsetof(STORAGE_DEVICE_DESCRIPTOR, RawDeviceProperties) && returned <= buffer.size()) {
         const auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer.data());
         // The driver reports the descriptor size; trust the smaller of the two.
         const DWORD validBytes = (descriptor->Size != 0 && descriptor->Size < returned)
                                      ? descriptor->Size
                                      : returned;
+        if (validBytes < offsetof(STORAGE_DEVICE_DESCRIPTOR, RawDeviceProperties)) return true;
         out.storageBusType = descriptor->BusType;
         out.removableMedia = descriptor->RemovableMedia != FALSE;
         out.vendor = DescriptorStringAt(buffer.data(), validBytes, descriptor->VendorIdOffset);
@@ -210,6 +213,13 @@ bool DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
         disk.deviceNumber = query.deviceNumber;
         disk.storageBusType = query.storageBusType;
         disk.removableMedia = query.removableMedia;
+        STORAGE_HOTPLUG_INFO hotplug{};
+        hotplug.Size = sizeof(hotplug);
+        DWORD bytes = 0;
+        if (DeviceIoControl(device.Get(), IOCTL_STORAGE_GET_HOTPLUG_INFO, nullptr, 0,
+                            &hotplug, sizeof(hotplug), &bytes, nullptr) &&
+            bytes >= sizeof(hotplug) && hotplug.Size == sizeof(hotplug))
+            disk.driverMediaRemovable = hotplug.MediaRemovable != FALSE;
         if (disk.storageBusType == 0xFFFFFFFF) {
             // The descriptor IOCTL failed. Some real removable devices do not
             // implement it, so the bus type stays unknown; the device is still
@@ -357,6 +367,7 @@ bool DeviceManager::Refresh() {
         device.devInst = disk.devInst;
         device.deviceNumber = disk.deviceNumber;
         device.busType = busType;
+        device.driverMediaRemovable = disk.driverMediaRemovable;
         device.removable = disk.removableMedia || disk.volumeIsRemovable || isUsb;
         device.volumeLabel = disk.volumeLabel;
         device.driveLetters = disk.driveLetters;

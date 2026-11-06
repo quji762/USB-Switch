@@ -129,6 +129,8 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 枚举失败时返回退出码 1，并输出 `{"error":"enumeration_failed"}`。字段名不随界面语言变化。
 `mountPaths` 列出已识别的挂载路径（含盘符根目录和文件夹），`driveLetters` 仅列出设备自身的盘符，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。
 
+开发版的 `--list --json` 另含 `driverMediaRemovable`：驱动报告介质可移除为 `true`，不可移除为 `false`，无法查询为 `null`。普通 U 盘也可能返回 `true`；此字段不能单独用来判定读卡器或允许只弹卡。
+
 ```powershell
 $devices = .\usb-switch.exe --list --json | Out-String | ConvertFrom-Json
 $devices | Select-Object displayName, driveLetters, instanceId

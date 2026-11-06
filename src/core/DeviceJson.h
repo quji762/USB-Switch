@@ -14,6 +14,8 @@ inline json::Value DeviceJson(const Device& device) {
     row.Set(L"volumeLabel", Value::String(device.volumeLabel));
     row.Set(L"bus", Value::String(BusTypeName(device.busType)));
     row.Set(L"removable", Value::Bool(device.removable));
+    row.Set(L"driverMediaRemovable", device.driverMediaRemovable.has_value()
+        ? Value::Bool(*device.driverMediaRemovable) : Value::Null());
     row.Set(L"ejectable", Value::Bool(device.CanEject()));
     // A decimal string retains the full uint64_t range in scripting runtimes.
     row.Set(L"mountedVolumeBytes", device.sizeBytes ? Value::String(std::to_wstring(device.sizeBytes))
