@@ -40,6 +40,8 @@ const Entry kStrings[] = {
     {StrId::EjectOkTitle, L"已安全弹出", L"Safely removed"},
     {StrId::EjectOkText, L"“%1”已停止，现在可以安全拔出了。",
      L"“%1” has been stopped; it is safe to unplug now."},
+    {StrId::EjectIneligible, L"无法确认此设备仍是可弹出的非系统磁盘。请刷新设备列表。",
+     L"Could not verify this device is still an eligible non-system disk. Refresh the device list."},
     {StrId::EjectFailTitle, L"弹出失败", L"Removal failed"},
     {StrId::EjectFailText, L"无法弹出“%1”。\n\n%2", L"Could not remove “%1”.\n\n%2"},
 

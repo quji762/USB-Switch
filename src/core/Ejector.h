@@ -15,6 +15,7 @@ namespace qe {
 
 enum class EjectStatus {
     Success,
+    Ineligible, // unavailable, system disk, or could not verify current inventory
     Vetoed,   // refused by the PnP manager, vetoType says why
     Failed,   // the call itself failed
 };

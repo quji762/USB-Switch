@@ -62,7 +62,7 @@ src/
    `IOCTL_STORAGE_QUERY_PROPERTY`，拿到设备号、总线类型、是否可移动、厂商/产品字符串；
 3. `FindFirstVolume` 枚举卷，同样取 `STORAGE_DEVICE_NUMBER`，用 **设备号** 把卷的盘符、
    卷标、容量贴回对应的磁盘设备；
-4. 只保留报告为 **USB 或可移动** 的磁盘；USB 总线上的固定磁盘也会显示。
+4. 只保留报告为 **USB 或可移动** 的磁盘；USB 总线上的固定磁盘也会显示，但承载当前 Windows 卷的磁盘会排除（包括它的其他分区）。无法识别 Windows 卷的磁盘号时，程序不会发出弹出请求。
 
 弹出走 `CM_Request_Device_Eject`，被拒绝时读取 `PNP_VETO_TYPE` 与 veto 程序名，
 根据系统实际返回的信息解释失败原因；系统未提供占用程序名时无法列出该程序。

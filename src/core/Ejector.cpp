@@ -1,4 +1,5 @@
 #include "core/Ejector.h"
+#include "core/DeviceManager.h"
 #include "core/RemovalTarget.h"
 
 #include <iterator>
@@ -49,6 +50,13 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
         return result;
     }
 
+    // Confirmation and retry dialogs can outlive the original scan. Recheck
+    // eligibility before every request, even for callers holding an instance ID.
+    DeviceManager current;
+    if (!current.Refresh() || !current.FindByInstanceId(instanceId)) {
+        result.status = EjectStatus::Ineligible;
+        return result;
+    }
     DEVINST devInst = 0;
     std::wstring mutableId = instanceId;  // CM_Locate_DevNodeW takes DEVINSTID_W.
     const CONFIGRET locateRet = CM_Locate_DevNodeW(&devInst, mutableId.data(), CM_LOCATE_DEVNODE_NORMAL);
@@ -88,6 +96,7 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
 std::wstring Ejector::Describe(const EjectResult& result) {
     const auto& strings = i18n::I18n::Instance();
 
+    if (result.status == EjectStatus::Ineligible) return strings.Get(i18n::StrId::EjectIneligible);
     if (result.status == EjectStatus::Vetoed) {
         std::wstring reason;
         i18n::StrId suffixId = i18n::StrId::VetoUnknown;

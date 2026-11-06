@@ -9,6 +9,8 @@
 #include <setupapi.h>
 #include <devpkey.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <cwchar>
 #include <iterator>
 
@@ -285,10 +287,49 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
     return true;
 }
 
+// Ask the running Windows volume for every physical disk extent. A drive
+// letter alone would miss another partition on the same USB disk.
+std::vector<DWORD> WindowsVolumeDisks() {
+    WCHAR windows[MAX_PATH]{}, root[MAX_PATH]{}, guid[MAX_PATH]{};
+    const UINT length = GetSystemWindowsDirectoryW(windows, MAX_PATH);
+    if (!length || length >= MAX_PATH || !GetVolumePathNameW(windows, root, MAX_PATH) ||
+        !GetVolumeNameForVolumeMountPointW(root, guid, MAX_PATH)) return {};
+    std::wstring path(guid);
+    if (path.empty() || path.back() != L'\\') return {};
+    path.pop_back();
+    Handle volume(CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              nullptr, OPEN_EXISTING, 0, nullptr));
+    if (!volume) return {};
+    for (size_t count = 4; count <= 4096; count *= 2) {
+        const auto size = offsetof(VOLUME_DISK_EXTENTS, Extents) + count * sizeof(DISK_EXTENT);
+        std::vector<BYTE> buffer(size);
+        DWORD returned = 0;
+        if (!DeviceIoControl(volume.Get(), IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0,
+                             buffer.data(), static_cast<DWORD>(size), &returned, nullptr)) {
+            if (GetLastError() == ERROR_MORE_DATA) continue;
+            return {};
+        }
+        const auto* extents = reinterpret_cast<const VOLUME_DISK_EXTENTS*>(buffer.data());
+        if (returned < sizeof(VOLUME_DISK_EXTENTS) || !extents->NumberOfDiskExtents ||
+            extents->NumberOfDiskExtents > (returned - offsetof(VOLUME_DISK_EXTENTS, Extents)) / sizeof(DISK_EXTENT))
+            return {};
+        std::vector<DWORD> disks;
+        for (DWORD i = 0; i < extents->NumberOfDiskExtents; ++i)
+            disks.push_back(extents->Extents[i].DiskNumber);
+        return disks;
+    }
+    return {};
+}
+
 bool DeviceManager::Refresh() {
     std::vector<DiskCandidate> disks;
     if (!CollectDiskInterfaces(disks) || !AttachVolumes(disks)) return false;
 
+    const auto windowsDisks = api_.windowsDisks();
+    if (windowsDisks.empty()) {
+        QE_LOG_WARN(L"cannot identify disks backing the running Windows volume");
+        return false;
+    }
     DeviceList next;
     next.reserve(disks.size());
     for (auto& disk : disks) {
@@ -300,6 +341,8 @@ bool DeviceManager::Refresh() {
             continue;
         }
         if (disk.deviceNumber == 0xFFFFFFFF) continue;  // could not be identified
+
+        if (std::find(windowsDisks.begin(), windowsDisks.end(), disk.deviceNumber) != windowsDisks.end()) continue;
 
         const BusType busType = ToBusType(disk.storageBusType);
         const bool isUsb = busType == BusType::Usb;

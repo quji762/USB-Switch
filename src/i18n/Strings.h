@@ -28,6 +28,7 @@ enum class StrId {
     ConfirmEjectText,
     EjectOkTitle,
     EjectOkText,
+    EjectIneligible,
     EjectFailTitle,
     EjectFailText,
 

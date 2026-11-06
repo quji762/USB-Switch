@@ -30,6 +30,8 @@ namespace qe {
 // Resolve an exact enumerated mount point, refusing ambiguous snapshots.
 std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_view input);
 
+std::vector<DWORD> WindowsVolumeDisks();
+
 class DeviceManager {
 public:
     using ChangeCallback = std::function<void()>;
@@ -37,6 +39,7 @@ public:
     // Boundary around the system-wide enumeration calls. Supplying alternate
     // implementations permits testing errors without altering real devices.
     struct EnumerationApi {
+        decltype(&WindowsVolumeDisks) windowsDisks = WindowsVolumeDisks;
         decltype(&::SetupDiGetClassDevsW) getClassDevs = ::SetupDiGetClassDevsW;
         decltype(&::FindFirstVolumeW) findFirstVolume = ::FindFirstVolumeW;
         decltype(&::FindNextVolumeW) findNextVolume = ::FindNextVolumeW;

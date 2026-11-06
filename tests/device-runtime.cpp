@@ -186,6 +186,12 @@ int main() {
           folderJson.Find(L"driveLetters")->Size() == 0,
           "folder-mounted device exports its mount path without a host drive letter");
 
+    const auto windowsDisks = qe::WindowsVolumeDisks();
+    Check(!windowsDisks.empty(), "live Windows volume resolves to backing disk numbers");
+    qe::DeviceManager::EnumerationApi missingSystem;
+    missingSystem.windowsDisks = [] { return std::vector<DWORD>{}; };
+    qe::DeviceManager unverifiable(missingSystem);
+    Check(!unverifiable.Refresh(), "scan refuses to publish targets when Windows disk identity is unavailable");
     qe::DeviceManager manager;
     // Exercise populated output even on a runner with no USB drives attached.
     qe::Device sample;
@@ -278,6 +284,7 @@ int main() {
     Check(!refusal.CanRetry(), "failed device lookup does not offer retry");
     // Ejector must refuse a bogus instance rather than misbehave.
     const qe::EjectResult bogus = qe::Ejector::Eject(L"USB-Switch\\NONEXISTENT\\TEST");
+    Check(bogus.status == qe::EjectStatus::Ineligible, "unlisted instance is rejected before the PnP eject request");
     Check(!bogus.Succeeded(), "ejecting a nonexistent instance fails cleanly");
     Check(!qe::Ejector::Describe(bogus).empty(), "a failed eject has an explanation");
 
