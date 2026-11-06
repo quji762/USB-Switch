@@ -55,6 +55,9 @@ Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 english.SettingsShortcut=USB-Switch Settings
 chinesesimplified.SettingsShortcut=USB-Switch 设置
 
+english.LegacyNameConflict=Setup found a file named quickeject.exe that it could not identify as the previous QuickEject application. Choose a different installation folder or move that file yourself before continuing.
+chinesesimplified.LegacyNameConflict=安装目录中有一个 quickeject.exe，无法确认它是旧版 QuickEject。请选择其他安装目录，或自行移走该文件后再继续。
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -65,7 +68,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Remove the old executable when upgrading an installation that used the same AppId.
 [InstallDelete]
-Type: files; Name: "{app}\quickeject.exe"
+Type: files; Name: "{app}\quickeject.exe"; Check: IsLegacyExecutable
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -80,6 +83,31 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 [Code]
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+function IsLegacyExecutable: Boolean;
+var
+  Shell, Folder, Item: Variant;
+begin
+  Result := False;
+  if not FileExists(ExpandConstant('{app}\quickeject.exe')) then exit;
+  try
+    Shell := CreateOleObject('Shell.Application');
+    Folder := Shell.NameSpace(ExpandConstant('{app}'));
+    Item := Folder.ParseName('quickeject.exe');
+    Result := (CompareText(Item.ExtendedProperty('System.Software.ProductName'), 'QuickEject') = 0) and
+              (CompareText(Item.ExtendedProperty('System.Company'), 'QuickEject Project') = 0) and
+              (CompareText(Item.ExtendedProperty('System.OriginalFileName'), 'quickeject.exe') = 0);
+  except
+    Log('Could not identify legacy executable: ' + GetExceptionMessage);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if FileExists(ExpandConstant('{app}\quickeject.exe')) and not IsLegacyExecutable then
+    Result := CustomMessage('LegacyNameConflict');
+end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
@@ -118,6 +146,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then begin
     RemoveOwnedRunEntry('USB-Switch', '{#MyAppExeName}');
-    RemoveOwnedRunEntry('QuickEject', 'quickeject.exe');
+    if not FileExists(ExpandConstant('{app}\quickeject.exe')) or IsLegacyExecutable then
+      RemoveOwnedRunEntry('QuickEject', 'quickeject.exe');
   end;
 end;

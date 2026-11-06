@@ -50,8 +50,12 @@ try {
         if ($legacyProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $oldExe)) { throw 'Legacy installation failed' }
     } else {
         Install-TestApp
-        # Without an old installer, simulate its installed executable.
+        # A renamed executable is not a legacy QuickEject installation.
         Copy-Item -LiteralPath (Join-Path $installDir 'usb-switch.exe') -Destination $oldExe
+        $before = (Get-FileHash $oldExe).Hash
+        $refused = Start-Process -FilePath $installerPath -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/CURRENTUSER',"/DIR=`"$installDir`"") -Wait -PassThru
+        if ($refused.ExitCode -eq 0 -or !(Test-Path $oldExe) -or (Get-FileHash $oldExe).Hash -ne $before) { throw 'Installer did not protect an unrelated same-name file' }
+        Remove-Item -LiteralPath $oldExe
     }
     $legacyCommand = '"' + $oldExe + '"'
     New-ItemProperty -LiteralPath $runKey -Name 'QuickEject' -PropertyType String -Value $legacyCommand | Out-Null
@@ -60,7 +64,7 @@ try {
     try {
         $blocked = Start-Process -FilePath $installerPath -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=`"$installDir`"") -PassThru
         if (!$blocked.WaitForExit(15000)) { $blocked.Kill(); throw 'Installer did not stop when the application was running' }
-        if ($blocked.ExitCode -eq 0 -or !(Test-Path -LiteralPath $oldExe)) { throw 'Upgrade proceeded while the old application was running' }
+        if ($blocked.ExitCode -eq 0 -or ($LegacyInstaller -and !(Test-Path -LiteralPath $oldExe))) { throw 'Upgrade proceeded while the old application was running' }
     } finally {
         $legacyMutex.Dispose()
     }
@@ -75,7 +79,6 @@ try {
 
     Install-TestApp
     New-ItemProperty -LiteralPath $runKey -Name 'USB-Switch' -PropertyType String -Value $foreignCommand | Out-Null
-    Copy-Item -LiteralPath (Join-Path $installDir 'usb-switch.exe') -Destination $oldExe
     New-ItemProperty -LiteralPath $runKey -Name 'QuickEject' -PropertyType String -Value $legacyCommand | Out-Null
     Install-TestApp
     if ((Get-ItemProperty -LiteralPath $runKey).'USB-Switch' -ne $foreignCommand) { throw 'Upgrade changed an unrelated startup entry' }
