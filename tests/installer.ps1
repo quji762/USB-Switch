@@ -1,8 +1,12 @@
 param(
-    [string]$Installer = (Join-Path $PSScriptRoot '..\dist\installer\usb-switch-setup-1.0.0.0.exe'),
+    [string]$Installer = '',
     [string]$LegacyInstaller = ''
 )
 $ErrorActionPreference = 'Stop'
+if (!$Installer) {
+    $version = (Get-Item (Join-Path $PSScriptRoot '..\dist\usb-switch.exe')).VersionInfo.ProductVersion
+    $Installer = Join-Path $PSScriptRoot "..\dist\installer\usb-switch-setup-$version.0.exe"
+}
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{88DB2805-7CF6-449D-9C44-A6239B4A86CD}_is1'

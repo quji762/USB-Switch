@@ -9,6 +9,10 @@ experience as USB Safely Remove without using its name, trademarks or artwork.
 
 ---
 
+## 1.0.1 更新
+
+修复部分单磁盘 USB 设备可以识别、却无法弹出的问题。设备被占用时保留系统的拒绝原因；关闭占用文件后可重试。此版本也修复了托盘菜单的定位和键盘操作。
+
 ## 功能 / Features
 
 | 功能 | 说明 |
@@ -104,7 +108,7 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 `--list` 输出示例：
 
 ```
-USB-Switch 1.0.0 — removable devices
+USB-Switch 1.0.1 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```

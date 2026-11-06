@@ -10,6 +10,8 @@ Run:  python tools/check-resources.py <path-to-exe>
 
 from __future__ import annotations
 
+from pathlib import Path
+import re
 import struct
 import sys
 
@@ -161,12 +163,14 @@ def main() -> int:
         print(f"  (+{len(manifests) - len(primary)} extra manifest from the MinGW runtime, "
               f"shadowed by ours)")
 
+    cmake = (Path(__file__).resolve().parents[1] / "CMakeLists.txt").read_text(encoding="utf-8")
+    version = re.search(r"project\(usb-switch\s+VERSION\s+(\d+\.\d+\.\d+)", cmake).group(1)
     # Version strings sanity check.
     for _name, offset, size in resources.get(RT_VERSION, []):
         values = read_version_strings(data, offset, size)
         for key, expected in (("CompanyName", "USB-Switch Project"),
                               ("ProductName", "USB-Switch"),
-                              ("FileVersion", "1.0.0")):
+                              ("FileVersion", version)):
             if values.get(key) != expected:
                 problems.append(f"version resource: {key} is {values.get(key)!r}, expected {expected!r}")
         print("  version strings: " + ", ".join(f"{k}={v}" for k, v in values.items()))
