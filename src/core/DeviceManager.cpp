@@ -240,6 +240,7 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
             continue;
         }
 
+        bool capacityCounted = false;  // Several drive letters can refer to this volume.
         for (const WCHAR* mount = mountPoints.data(); *mount != L'\0';
              mount += std::wcslen(mount) + 1) {
             std::wstring path(mount);
@@ -280,11 +281,11 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
                 }
 
                 ULARGE_INTEGER totalBytes{};
-                if (GetDiskFreeSpaceExW(path.c_str(), nullptr, &totalBytes, nullptr) &&
+                if (!capacityCounted && GetDiskFreeSpaceExW(path.c_str(), nullptr, &totalBytes, nullptr) &&
                     totalBytes.QuadPart > 0) {
-                    // Sum across mount points: a multi-partition device shows
-                    // its total capacity, not just the last partition's.
+                    // Count each enumerated volume once while retaining all its drive letters.
                     disk.sizeBytes += static_cast<uint64_t>(totalBytes.QuadPart);
+                    capacityCounted = true;
                 }
                 break;  // one volume belongs to at most one disk candidate
             }
