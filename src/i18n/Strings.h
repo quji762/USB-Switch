@@ -21,6 +21,11 @@ enum class StrId {
     MenuSettings,
     MenuLogs,
     LogOpenFailed,
+    MenuAliases,
+    AliasHint,
+    HotkeyLabel,
+    HotkeyOff,
+    HotkeyConflict,
     MenuAbout,
     MenuExit,
 

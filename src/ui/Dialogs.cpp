@@ -69,6 +69,14 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             CheckDlgButton(hwnd, IDC_SET_NOTIFY, settings.showNotifications ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hwnd, IDC_SET_CONFIRM, settings.confirmBeforeEject ? BST_CHECKED : BST_UNCHECKED);
 
+            SetDlgItemTextW(hwnd, IDC_SET_KEY_LABEL, strings.Get(i18n::StrId::HotkeyLabel));
+            HWND keys = GetDlgItem(hwnd, IDC_SET_KEY);
+            SendMessageW(keys, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(strings.Get(i18n::StrId::HotkeyOff)));
+            for (wchar_t letter = L'A'; letter <= L'Z'; ++letter) {
+                auto label = std::wstring(L"Ctrl + Alt + ") + letter;
+                SendMessageW(keys, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+            }
+            SendMessageW(keys, CB_SETCURSEL, settings.menuHotkey.empty() ? 0 : settings.menuHotkey[0] - L'A' + 1, 0);
             HWND combo = GetDlgItem(hwnd, IDC_SET_LANG);
             const wchar_t* items[] = {strings.Get(i18n::StrId::SettingsLanguageAuto),
                                       strings.Get(i18n::StrId::SettingsLanguageZh),
@@ -95,6 +103,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
             AppSettings& settings = Settings::Instance().Data();
             const AppSettings previous = settings;
+            const auto key = SendDlgItemMessageW(hwnd, IDC_SET_KEY, CB_GETCURSEL, 0, 0);
+            if (key >= 0 && key <= 26) settings.menuHotkey = key ? std::wstring(1, static_cast<wchar_t>(L'A'+key-1)) : L"";
             settings.runAtStartup = IsDlgButtonChecked(hwnd, IDC_SET_STARTUP) == BST_CHECKED;
             settings.showNotifications = IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED;
             settings.confirmBeforeEject = IsDlgButtonChecked(hwnd, IDC_SET_CONFIRM) == BST_CHECKED;
@@ -149,7 +159,46 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
     return FALSE;
 }
 
+struct AliasData { std::wstring id, display; };
+
+INT_PTR CALLBACK AliasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto& settings = Settings::Instance();
+    const auto& strings = i18n::I18n::Instance();
+    if (msg == WM_INITDIALOG) {
+        auto* data = reinterpret_cast<AliasData*>(lp);
+        SetWindowLongPtrW(hwnd, DWLP_USER, lp);
+        SetWindowTextW(hwnd, strings.Get(i18n::StrId::MenuAliases));
+        SetDlgItemTextW(hwnd, IDC_ALIAS_HINT, strings.Format(i18n::StrId::AliasHint, data->display).c_str());
+        SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
+        SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DialogCancel));
+        SendDlgItemMessageW(hwnd, IDC_ALIAS_NAME, EM_SETLIMITTEXT, 64, 0);
+        const auto& names = settings.Data().aliases;
+        auto it = names.find(data->id);
+        if (it != names.end()) SetDlgItemTextW(hwnd, IDC_ALIAS_NAME, it->second.c_str());
+        return TRUE;
+    }
+    if (msg != WM_COMMAND) return FALSE;
+    if (LOWORD(wp) == IDCANCEL) { EndDialog(hwnd, IDCANCEL); return TRUE; }
+    if (LOWORD(wp) != IDOK) return FALSE;
+    auto* data = reinterpret_cast<AliasData*>(GetWindowLongPtrW(hwnd, DWLP_USER));
+    wchar_t text[65]{};
+    GetDlgItemTextW(hwnd, IDC_ALIAS_NAME, text, 65);
+    auto alias = str::Trim(text);
+    auto& names = settings.Data().aliases;
+    const auto previous = names;
+    if (alias.empty()) names.erase(data->id); else names[data->id] = alias;
+    if (!settings.Save()) {
+        names = previous;
+        MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsSaveFailed), strings.Get(i18n::StrId::MenuAliases), MB_ICONERROR);
+    } else EndDialog(hwnd, IDOK);
+    return TRUE;
+}
 }  // namespace
+
+void Dialogs::EditAlias(HINSTANCE instance, HWND owner, const std::wstring& id, const std::wstring& display) {
+    AliasData data{id, display};
+    DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_ALIAS), owner, AliasProc, reinterpret_cast<LPARAM>(&data));
+}
 
 INT_PTR Dialogs::ShowAbout(HINSTANCE instance, HWND owner) {
     return DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_ABOUT), owner, AboutDialogProc, 0);

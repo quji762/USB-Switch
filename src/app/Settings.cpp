@@ -28,6 +28,15 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
     std::wstring language = root.GetString(L"language", L"auto");
     if (!language.empty()) settings.language = language;
 
+    auto key = root.GetString(L"menuHotkey", L"U");
+    if (key.empty() || (key.size() == 1 && key[0] >= L'A' && key[0] <= L'Z')) settings.menuHotkey = key;
+    if (const auto* aliases = root.Find(L"deviceAliases"); aliases && aliases->IsObject()) {
+        for (const auto& id : aliases->Keys()) {
+            auto name = str::Trim(aliases->GetString(id, L""));
+            if (!id.empty() && !name.empty() && name.size() <= 64 && name.find_first_of(L"\r\n\t") == name.npos)
+                settings.aliases[id] = name;
+        }
+    }
     settings.runAtStartup = root.GetBool(L"runAtStartup", settings.runAtStartup);
     settings.showNotifications = root.GetBool(L"showNotifications", settings.showNotifications);
     settings.confirmBeforeEject = root.GetBool(L"confirmBeforeEject", settings.confirmBeforeEject);
@@ -36,11 +45,20 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
 
 json::Value AppSettings::ToJson() const {
     json::Value root = json::Value::Object();
+    root.Set(L"menuHotkey", json::Value::String(menuHotkey));
+    auto names = json::Value::Object();
+    for (const auto& item : aliases) names.Set(item.first, json::Value::String(item.second));
+    root.Set(L"deviceAliases", std::move(names));
     root.Set(L"language", json::Value::String(language));
     root.Set(L"runAtStartup", json::Value::Bool(runAtStartup));
     root.Set(L"showNotifications", json::Value::Bool(showNotifications));
     root.Set(L"confirmBeforeEject", json::Value::Bool(confirmBeforeEject));
     return root;
+}
+
+std::wstring AppSettings::DeviceName(const std::wstring& id, const std::wstring& original) const {
+    auto it = aliases.find(id);
+    return it == aliases.end() ? original : it->second + L" — " + original;
 }
 
 Settings& Settings::Instance() {

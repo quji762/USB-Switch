@@ -5,6 +5,7 @@
 // defaults (and the file is rewritten on the next change) - the app never
 // refuses to start because of bad settings.
 
+#include <map>
 #include <string>
 
 #include "util/Json.h"
@@ -14,6 +15,9 @@ namespace qe {
 struct AppSettings {
     // "auto" (follow the UI language), "zh" or "en".
     std::wstring language = L"auto";
+    std::wstring menuHotkey = L"U"; // Ctrl+Alt plus this letter; empty disables.
+    std::map<std::wstring, std::wstring> aliases; // PnP instance ID -> local display name
+    std::wstring DeviceName(const std::wstring& id, const std::wstring& original) const;
     bool runAtStartup = false;
     bool showNotifications = true;
     bool confirmBeforeEject = true;

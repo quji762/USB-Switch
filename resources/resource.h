@@ -7,6 +7,11 @@
 // ("USBSwitchIcon") declared in version.rc, so no id can drift.
 
 #define IDD_ABOUT                       201
+#define IDD_ALIAS                       203
+#define IDC_ALIAS_NAME                  501
+#define IDC_ALIAS_HINT                  502
+#define IDC_SET_KEY_LABEL               407
+#define IDC_SET_KEY                     408
 #define IDD_SETTINGS                    202
 
 // About dialog

@@ -27,7 +27,7 @@ END
 /////////////////////////////////////////////////////////////////////////////
 
 // 224x100: the buttons (y=84, height=14) end at 98.
-IDD_SETTINGS DIALOGEX 0, 0, 224, 100
+IDD_SETTINGS DIALOGEX 0, 0, 224, 124
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
 FONT 9, "MS Shell Dlg", 400, 0, 0x1
@@ -37,7 +37,20 @@ BEGIN
     AUTOCHECKBOX "",          IDC_SET_CONFIRM,     12, 36, 200, 10
     LTEXT    "",              IDC_SET_LANG_LABEL,  12, 52,  40, 10
     COMBOBOX IDC_SET_LANG,                      56, 50, 156, 44, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT    "",              IDC_SET_NOTE,        12, 68, 200, 10
-    DEFPUSHBUTTON "OK",       IDOK,                98, 84,  44, 14
-    PUSHBUTTON "Cancel",      IDCANCEL,           148, 84,  44, 14
+    LTEXT "", IDC_SET_KEY_LABEL, 12, 70, 84, 12
+    COMBOBOX IDC_SET_KEY, 98, 68, 114, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT    "",              IDC_SET_NOTE,        12, 91, 200, 16
+    DEFPUSHBUTTON "OK",       IDOK,                98, 107,  44, 14
+    PUSHBUTTON "Cancel",      IDCANCEL,           148, 107,  44, 14
+END
+
+IDD_ALIAS DIALOGEX 0, 0, 260, 96
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Device alias"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT "", IDC_ALIAS_HINT, 10, 8, 240, 36, SS_NOPREFIX
+    EDITTEXT IDC_ALIAS_NAME, 10, 46, 240, 14, ES_AUTOHSCROLL
+    DEFPUSHBUTTON "OK", IDOK, 151, 73, 47, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 203, 73, 47, 14
 END

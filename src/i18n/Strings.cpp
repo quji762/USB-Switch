@@ -31,6 +31,11 @@ const Entry kStrings[] = {
     {StrId::MenuLogs, L"打开日志文件夹", L"Open log folder"},
     {StrId::LogOpenFailed, L"无法打开日志文件夹。请检查本机用户目录的访问权限。",
      L"Could not open the log folder. Check access to your local user directory."},
+    {StrId::MenuAliases, L"设置设备别名", L"Device aliases"},
+    {StrId::AliasHint, L"为 %1 设置别名。留空恢复原名。", L"Name for %1. Leave blank to restore the original name."},
+    {StrId::HotkeyLabel, L"设备菜单快捷键", L"Device menu shortcut"},
+    {StrId::HotkeyOff, L"关闭", L"Off"},
+    {StrId::HotkeyConflict, L"快捷键不可用。请在设置中选择其他组合。", L"Shortcut unavailable. Choose another combination in Settings."},
     {StrId::MenuAbout, L"关于 USB-Switch", L"About USB-Switch"},
     {StrId::MenuExit, L"退出", L"Exit"},
 

@@ -120,6 +120,12 @@ static void PrintW(const wchar_t* text) {
 }
 
 int main() {
+    qe::AppSettings input;
+    input.aliases[L"id-a"] = L"Backup";
+    input.menuHotkey = L"J";
+    const auto saved = qe::AppSettings::FromJson(input.ToJson());
+    Check(saved.menuHotkey == L"J" && saved.DeviceName(L"id-a", L"E:").find(L"Backup") == 0 &&
+          saved.DeviceName(L"id-b", L"D:") == L"D:", "alias follows device identity and hotkey persists");
     topology::Verify();
     WriteOut("Device enumeration (runtime)\n");
 

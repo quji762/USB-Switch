@@ -52,9 +52,24 @@ try {
     if ($owner -ne $process.Id) { throw 'Tray window belongs to another process' }
     $dialog = Find-TestDialog 'USB-Switch Settings'
     $combo = [UsbSwitchGuiTest]::GetDlgItem($dialog, 405)
+    $keys = [UsbSwitchGuiTest]::GetDlgItem($dialog, 408)
+    if ([UsbSwitchGuiTest]::SendMessageW($keys, 0x147, [IntPtr]::Zero, [IntPtr]::Zero) -ne [IntPtr]21) { throw 'Expected default hotkey U' }
+    if ([UsbSwitchGuiTest]::SendMessageW($keys, 0x14E, [IntPtr]10, [IntPtr]::Zero) -ne [IntPtr]10) { throw 'Hotkey selection failed' }
     if ([UsbSwitchGuiTest]::SendMessageW($combo, 0x14E, [IntPtr]1, [IntPtr]::Zero) -ne [IntPtr]1) { throw 'Language selection failed' }
     [void][UsbSwitchGuiTest]::SendMessageW($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero)
     if ((Get-Content $config -Raw | ConvertFrom-Json).language -ne 'zh') { throw 'Language change was not saved' }
+    if ((Get-Content $config -Raw | ConvertFrom-Json).menuHotkey -ne 'J') { throw 'Hotkey change was not saved' }
+    [void][UsbSwitchGuiTest]::PostMessageW($window, 0x312, [IntPtr]1, [IntPtr]0x004A0003)
+    $menuOpened = $false
+    for ($i = 0; $i -lt 50; $i++) {
+        $popup = [UsbSwitchGuiTest]::FindWindowW('#32768', $null)
+        [uint32]$popupPid = 0
+        [void][UsbSwitchGuiTest]::GetWindowThreadProcessId($popup, [ref]$popupPid)
+        if ($popupPid -eq $process.Id) { $menuOpened = $true; break }
+        Start-Sleep -Milliseconds 50
+    }
+    if (!$menuOpened) { throw 'Hotkey message did not open the device menu' }
+    [void][UsbSwitchGuiTest]::PostMessageW($window, 0x1F, [IntPtr]::Zero, [IntPtr]::Zero)
     $second = Start-Process -FilePath $exePath -ArgumentList '--settings' -PassThru
     if (!$second.WaitForExit(10000) -or $second.ExitCode -ne 0 -or $process.HasExited) { throw 'Second-instance handling failed' }
     $dialog = Find-TestDialog ('USB-Switch ' + [char]0x8BBE + [char]0x7F6E)

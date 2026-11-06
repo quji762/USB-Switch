@@ -12,6 +12,10 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 1.2.0：全局快捷键和设备别名
+
+在其他应用里按 **Ctrl+Alt+U** 可打开设备菜单，方向键选设备，Esc 取消。快捷键本身不会弹出设备。在“设置”中可改为 Ctrl+Alt 加其他字母或关闭；组合被其他程序占用时会提示。打开“设置设备别名”，选择设备并输入名称；留空保存可恢复原名。别名保存在当前用户配置中，菜单和确认框同时保留原卷标及盘符。别名按 Windows 提供的实例 ID 匹配，盘符变化不会单独改变绑定；如果换接口后 Windows 分配了不同 ID，需要重新命名。
+
 ## 1.1.0：弹出占用诊断
 
 弹出被拒绝时，托盘错误框和命令行会同时列出 Windows 为本次设备移除记录的关联程序名和 PID。错误框可用 Ctrl+C 复制，脚本可读 `--eject <目标> --json` 的 `reportedProcesses` 数组。只匹配本次请求期间、属于该磁盘或本次实际停止节点的 Kernel-PnP 225 事件；没有匹配记录或没有权限时，结果为空。这里的文件名是程序名，不是它打开的文档；不会读取命令行、关闭进程或强制解锁文件。
@@ -133,7 +137,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.1.0 — removable devices
+USB-Switch 1.2.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```

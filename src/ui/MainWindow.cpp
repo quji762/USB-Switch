@@ -32,6 +32,8 @@ constexpr UINT kTrayMessage = WM_APP + 2;
 constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
 constexpr UINT kCommandSettings = 0x2002;
+constexpr UINT kAliasBase = 0x100000;
+constexpr int kMenuHotkey = 1;
 constexpr UINT kCommandLogs = 0x2005;
 constexpr UINT kCommandAbout = 0x2003;
 constexpr UINT kCommandExit = 0x2004;
@@ -106,6 +108,9 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     switch (message) {
         case WM_CREATE:
             return OnCreate(hwnd) ? 0 : -1;
+        case WM_HOTKEY:
+            if (wParam == kMenuHotkey && IsWindowEnabled(hwnd) && !menuOpen_) ShowTrayMenu();
+            return 0;
         case WM_TIMER:
             if (wParam == kRescanTimerId) OnRescanTimer();
             else if (wParam == kTrayRetryTimerId) RestoreTrayIcon();
@@ -172,12 +177,14 @@ bool MainWindow::OnCreate(HWND hwnd) {
         icon_ = nullptr;
         return false;
     }
+    ApplyMenuHotkey();
     notifier_.Register(hwnd_);
     RefreshDevices();
     return true;
 }
 
 void MainWindow::OnDestroy() {
+    UnregisterHotKey(hwnd_, kMenuHotkey);
     notifier_.Unregister();
     tray_.Remove();
     if (icon_ != nullptr) {
@@ -312,6 +319,7 @@ void MainWindow::RebuildTrayTip() {
 }
 
 void MainWindow::ShowTrayMenu(const POINT* position) {
+    if (menuOpen_) return;
     const auto& strings = i18n::I18n::Instance();
     HMENU menu = CreatePopupMenu();
     if (menu == nullptr) {
@@ -320,27 +328,32 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     }
 
     UINT itemPosition = 0;
+    HMENU aliases = nullptr;
     const auto devices = scanRetryMs_ ? DeviceList{} : devices_.Devices();
     if (scanRetryMs_) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuScanUnavailable));
     } else if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
+        aliases = CreatePopupMenu();
         for (const auto& device : devices) {
             const UINT commandId = kDeviceCommandBase + itemPosition;
             // Win32 treats a single ampersand as a keyboard mnemonic.
             std::wstring menuName;
-            for (wchar_t ch : device.displayName) {
+            for (wchar_t ch : Settings::Instance().Data().DeviceName(device.instanceId, device.displayName)) {
                 if (ch == L'&') menuName += ch;
                 menuName += ch;
             }
             AppendMenuW(menu, MF_STRING, commandId,
                         strings.Format(i18n::StrId::MenuEjectItem, menuName).c_str());
+            if (aliases) AppendMenuW(aliases, MF_STRING, kAliasBase + itemPosition, menuName.c_str());
             ++itemPosition;
         }
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
 
+    if (aliases && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
+        DestroyMenu(aliases);
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
     AppendMenuW(menu, MF_STRING, kCommandSettings, strings.Get(i18n::StrId::MenuSettings));
     AppendMenuW(menu, MF_STRING, kCommandLogs, strings.Get(i18n::StrId::MenuLogs));
@@ -357,14 +370,20 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     // Without SetForegroundWindow the popup menu does not dismiss on outside
     // clicks; the WM_NULL post restores correct keyboard focus afterwards.
     SetForegroundWindow(hwnd_);
+    menuOpen_ = true;
     const BOOL command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTBUTTON,
                                           cursor.x, cursor.y, hwnd_, nullptr);
+    menuOpen_ = false;
     PostMessageW(hwnd_, WM_NULL, 0, 0);
     DestroyMenu(menu);
 
     if (!hwnd_ || command == 0) return;
     const auto id = static_cast<UINT>(command);
-    if (id >= kDeviceCommandBase) {
+    if (id >= kAliasBase) {
+        const auto index = id - kAliasBase;
+        if (!scanRetryMs_ && index < devices.size())
+            Dialogs::EditAlias(instance_, hwnd_, devices[index].instanceId, devices[index].displayName);
+    } else if (id >= kDeviceCommandBase) {
         const auto index = id - kDeviceCommandBase;
         if (!scanRetryMs_ && index < devices.size()) EjectDevice(devices[index]);
     } else {
@@ -410,7 +429,7 @@ void MainWindow::EjectDevice(const Device& device) {
     // it is open. Resolve the copied instance ID again immediately before the
     // eject request instead of relying on the cached device-node handle.
     const std::wstring instanceId = device.instanceId;
-    const std::wstring displayName = device.displayName;
+    const std::wstring displayName = settings.DeviceName(instanceId, device.displayName);
 
     if (settings.confirmBeforeEject) {
         const std::wstring text = strings.Format(i18n::StrId::ConfirmEjectText, displayName);
@@ -444,8 +463,23 @@ void MainWindow::EjectDevice(const Device& device) {
     }
 }
 
+void MainWindow::ApplyMenuHotkey() {
+    const auto& key = Settings::Instance().Data().menuHotkey;
+    if (registeredKey_ == key) return;
+    UnregisterHotKey(hwnd_, kMenuHotkey);
+    registeredKey_.clear();
+    if (key.empty()) return;
+    if (RegisterHotKey(hwnd_, kMenuHotkey, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, key.front()))
+        registeredKey_ = key;
+    else {
+        QE_LOG_WARN(L"menu hotkey unavailable: %lu", GetLastError());
+        tray_.ShowBalloon(QUICKEJECT_APP_NAME_W, i18n::I18n::Instance().Get(i18n::StrId::HotkeyConflict), NIIF_WARNING);
+    }
+}
+
 void MainWindow::OpenSettings() {
     if (Dialogs::ShowSettings(instance_, hwnd_) != IDOK) return;
+    ApplyMenuHotkey();
     RebuildTrayTip();
 }
 
