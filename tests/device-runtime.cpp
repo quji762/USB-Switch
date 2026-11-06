@@ -135,7 +135,29 @@ int main() {
     const fs::path backup = root / L"rotation.log.old";
     Check(fs::exists(backup) && fs::file_size(backup) >= (1 << 20) &&
           fs::file_size(log) > 0 && fs::file_size(log) < 1024, "log rotates before restart and continues writing");
-    fs::remove(backup); fs::remove(log); fs::remove(root);
+    fs::remove(backup); fs::remove(log);
+
+    const auto settingsPath = (root / L"settings.json").wstring();
+    const auto original = qe::json::Value::String(L"original");
+    const auto changed = qe::json::Value::String(L"changed");
+    qe::json::Value loaded;
+    auto isValue = [&](const wchar_t* expected) {
+        return qe::json::LoadFile(settingsPath, loaded, nullptr) && loaded.AsString() == expected;
+    };
+    Check(qe::json::SaveFile(settingsPath, original, nullptr, qe::json::SaveMode::CreateOnly),
+          "migration can create absent settings");
+    Check(!qe::json::SaveFile(settingsPath, changed, nullptr, qe::json::SaveMode::CreateOnly) &&
+          isValue(L"original"), "late migration cannot replace settings saved by another process");
+    HANDLE held = CreateFileW(settingsPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                              OPEN_EXISTING, 0, nullptr);
+    Check(held != INVALID_HANDLE_VALUE && !qe::json::SaveFile(settingsPath, changed) &&
+          isValue(L"original"), "failed replacement leaves the previous settings readable");
+    if (held != INVALID_HANDLE_VALUE) CloseHandle(held);
+    Check(qe::json::SaveFile(settingsPath, changed) && isValue(L"changed"),
+          "settings save succeeds after file lock is released");
+    fs::remove(settingsPath);
+    Check(fs::is_empty(root), "failed saves clean up their own temporary files");
+    fs::remove(root);
     qe::Logger::Instance().Init(L"");  // no log file: this is a test, not the app
     qe::Settings::Instance().Load();
     qe::i18n::I18n::Instance().Init(L"en");

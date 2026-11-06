@@ -522,7 +522,7 @@ bool Value::Parse(std::wstring_view text, Value& out, std::wstring* error) {
 // ---------------------------------------------------------------------------
 
 bool LoadFile(const std::wstring& path, Value& out, std::wstring* error) {
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         if (error != nullptr) {
@@ -549,7 +549,7 @@ bool LoadFile(const std::wstring& path, Value& out, std::wstring* error) {
     return Value::Parse(text, out, error);
 }
 
-bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) {
+bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error, SaveMode mode) {
     // qe::CreateDirectories (util/Win32.h) creates the parent chain.
     const size_t slash = path.find_last_of(L"\\/");
     if (slash != std::wstring::npos && slash > 0) {
@@ -563,8 +563,9 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) 
     // the target with CREATE_ALWAYS would leave a truncated settings.json if
     // the disk fills up or the machine loses power mid-write, and the next
     // start would silently fall back to defaults.
-    const std::wstring temporary = path + L".tmp";
-    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+    const std::wstring temporary = path + str::Format(L".%lu.%lu.%llu.tmp", GetCurrentProcessId(),
+        GetCurrentThreadId(), static_cast<unsigned long long>(GetTickCount64()));
+    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         if (error != nullptr) {
@@ -585,11 +586,13 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) 
         if (error != nullptr) *error = str::Format(L"cannot write %ls", temporary.c_str());
         return false;
     }
-    if (MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) == FALSE) {
+    const DWORD flags = MOVEFILE_WRITE_THROUGH | (mode == SaveMode::Replace ? MOVEFILE_REPLACE_EXISTING : 0);
+    if (!MoveFileExW(temporary.c_str(), path.c_str(), flags)) {
+        const DWORD moveError = GetLastError();
         DeleteFileW(temporary.c_str());
         if (error != nullptr) {
             *error = str::Format(L"cannot replace %ls: %ls", path.c_str(),
-                                 str::Win32ErrorMessage(GetLastError()).c_str());
+                                 str::Win32ErrorMessage(moveError).c_str());
         }
         return false;
     }

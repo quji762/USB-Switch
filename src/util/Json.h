@@ -81,6 +81,8 @@ private:
 bool LoadFile(const std::wstring& path, Value& out, std::wstring* error = nullptr);
 
 // Writes a UTF-8 file (with BOM) creating parent directories as needed.
-bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error = nullptr);
+enum class SaveMode { Replace, CreateOnly };
+bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error = nullptr,
+              SaveMode mode = SaveMode::Replace);
 
 }  // namespace qe::json

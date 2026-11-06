@@ -81,7 +81,14 @@ void Settings::Load() {
         const std::wstring legacy = directory.substr(0, separator) + L"\\QuickEject\\settings.json";
         if (json::LoadFile(legacy, root, nullptr) && root.IsObject()) {
             data_ = AppSettings::FromJson(root);
-            if (Save()) QE_LOG_INFO(L"migrated settings from %ls", legacy.c_str());
+            if (json::SaveFile(path, data_.ToJson(), &error, json::SaveMode::CreateOnly)) {
+                QE_LOG_INFO(L"migrated settings from %ls", legacy.c_str());
+            } else if (json::LoadFile(path, root, nullptr)) {
+                // Another process created current settings after our initial read.
+                data_ = AppSettings::FromJson(root);
+            } else {
+                QE_LOG_WARN(L"could not persist migrated settings: %ls", error.c_str());
+            }
             return;
         }
     }
