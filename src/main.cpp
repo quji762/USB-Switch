@@ -20,6 +20,7 @@
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
 #include "core/MediaEject.h"
+#include "core/UsbPort.h"
 #include "core/EjectJson.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
@@ -232,6 +233,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     if (argv == nullptr) {
         MessageBoxW(nullptr, L"CommandLineToArgvW failed", QUICKEJECT_APP_NAME_W, MB_OK | MB_ICONERROR);
         return 1;
+    }
+    if (argc == 3 && std::wstring_view(argv[1]) == L"--restart-held-usb") {
+        // Elevated helper: no tray, settings, log files or external commands.
+        const DWORD result = qe::ReconnectUsbPort(argv[2], false);
+        LocalFree(argv);
+        return static_cast<int>(result);
     }
     const qe::Options options = qe::ParseOptions(argc, argv);
 

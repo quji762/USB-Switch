@@ -12,6 +12,7 @@
 #include "app/SingleInstance.h"
 #include "core/Ejector.h"
 #include "core/MediaEject.h"
+#include "core/UsbPort.h"
 #include "core/RestartProcess.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
@@ -129,7 +130,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
                         KillTimer(hwnd_, kReconnectTimer);
                         reconnectDeadline_ = 0;
                         const auto& strings = i18n::I18n::Instance();
-                        QE_LOG_WARN(L"PnPUtil restart exited with %lu", *code);
+                        QE_LOG_WARN(L"Restart helper exited with %lu", *code);
                         const auto reason = str::Win32ErrorMessage(*code) + L" (" + std::to_wstring(*code) + L")";
                         MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectFailed, reason).c_str(),
                                     QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
@@ -438,7 +439,9 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     if (!hwnd_ || command == 0) return;
     const auto id = static_cast<UINT>(command);
     if (id == kCommandReconnect && !reconnectTarget.empty() && reconnectTarget == stoppedTarget_) {
-        auto error = Ejector::RestartStopped(stoppedDisk_, stoppedTarget_);
+        const bool usePort = Ejector::HeldForEject(reconnectTarget) &&
+                             ReconnectUsbPort(reconnectTarget, true) == ERROR_SUCCESS;
+        auto error = usePort ? ReconnectUsbPort(reconnectTarget, false) : Ejector::RestartStopped(stoppedDisk_, stoppedTarget_);
         if (error == ERROR_ACCESS_DENIED && Ejector::HeldForEject(reconnectTarget)) {
             if (MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectAdmin, stoppedName_).c_str(),
                             QUICKEJECT_APP_NAME_W, MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
@@ -451,8 +454,18 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
             if (!length || length >= MAX_PATH || reconnectTarget.find_first_of(L"\"*?") != reconnectTarget.npos ||
                 reconnectTarget.back() == L'\\') error = ERROR_INVALID_DATA;
             else {
-                const std::wstring exe = std::wstring(system) + L"\\pnputil.exe";
-                const std::wstring args = L"/restart-device \"" + reconnectTarget + L"\"";
+                std::wstring exe = std::wstring(system) + L"\\pnputil.exe";
+                if (usePort) {
+                    std::wstring self(32768, L'\0');
+                    const DWORD copied = GetModuleFileNameW(nullptr,self.data(),static_cast<DWORD>(self.size()));
+                    if (!copied || copied >= self.size()) {
+                        MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectTimeout), QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
+                        return;
+                    }
+                    self.resize(copied);
+                    exe = std::move(self);
+                }
+                const std::wstring args = (usePort ? L"--restart-held-usb \"" : L"/restart-device \"") + reconnectTarget + L"\"";
                 SHELLEXECUTEINFOW run{};
                 run.cbSize = sizeof(run);
                 run.fMask = SEE_MASK_NOCLOSEPROCESS;
