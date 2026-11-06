@@ -63,6 +63,8 @@ enum class StrId {
     EjectFailText,
 
     // Hot-plug balloons
+    ToastInserted,
+    ToastRemoved,
     DeviceInserted,
     DeviceRemoved,
 
@@ -99,11 +101,11 @@ enum class StrId {
     SettingsNotify,
     SettingsConfirm,
     SettingsLanguage,
-    SettingsLanguageAuto,
-    SettingsLanguageZh,
     ThemeLabel,
     ThemeLight,
     ThemeDark,
+    SettingsLanguageAuto,
+    SettingsLanguageZh,
     SettingsLanguageEn,
     SettingsNote,
     SettingsSaveFailed,

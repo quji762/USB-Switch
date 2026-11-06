@@ -10,6 +10,7 @@
 #include "core/DeviceManager.h"
 #include "core/DeviceNotifier.h"
 #include "ui/TrayIcon.h"
+#include "ui/ConnectionToast.h"
 #include "util/Win32.h"
 
 namespace qe {
@@ -52,6 +53,8 @@ private:
     void ShowTrayMenu(const POINT* position = nullptr);
     void OnMenuCommand(UINT commandId);
     void RefreshDevices();
+    ConnectionToast connectionToast_;
+    void ShowConnectionNotice(bool inserted,const std::wstring& name);
     void RestoreTrayIcon();
     void RebuildTrayTip();
     void EjectDevice(const Device& device);

@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 #include "ui/DialogHeader.h"
 
+
 #include <windows.h>
 #include <shellapi.h>
 #include <commctrl.h>
@@ -62,13 +63,14 @@ constexpr UINT kCommandExit = 0x2004;
 constexpr UINT_PTR kRescanTimerId = 1;
 constexpr UINT_PTR kTrayRetryTimerId = 2;
 constexpr UINT_PTR kReconnectTimer = 3;
+
 constexpr UINT kRescanDelayMs = 250;
 
 struct FilesDialogData { std::wstring text; bool retry; };
 INT_PTR CALLBACK OpenFilesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (auto result = ThemeDialog(hwnd,msg,wp,lp)) return result;
     if (PaintDialogHeader(msg,lp)) return TRUE;
     if (msg == WM_INITDIALOG) {
-    if (auto result = ThemeDialog(hwnd,msg,wp,lp)) return result;
         const auto& data = *reinterpret_cast<const FilesDialogData*>(lp);
         const auto& strings = i18n::I18n::Instance();
         SetWindowTextW(hwnd,strings.Get(i18n::StrId::InspectFiles));
@@ -255,6 +257,7 @@ bool MainWindow::OnCreate(HWND hwnd) {
 }
 
 void MainWindow::OnDestroy() {
+    connectionToast_.Clear();
     restartProcess_.Reset();
     UnregisterHotKey(hwnd_, kMenuHotkey);
     notifier_.Unregister();
@@ -351,8 +354,7 @@ void MainWindow::RefreshDevices() {
             if (previousNames_.find(device.instanceId) == previousNames_.end()) {
                 QE_LOG_INFO(L"device connected: %ls", device.displayName.c_str());
                 if (notify) {
-                    tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,
-                                      strings.Format(i18n::StrId::DeviceInserted, device.displayName));
+                    ShowConnectionNotice(true, device.displayName);
                 }
             }
         }
@@ -360,8 +362,7 @@ void MainWindow::RefreshDevices() {
             if (!devices_.FindByInstanceId(entry.first)) {
                 QE_LOG_INFO(L"device disconnected: %ls", entry.second.c_str());
                 if (notify) {
-                    tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,
-                                      strings.Format(i18n::StrId::DeviceRemoved, entry.second));
+                    ShowConnectionNotice(false, entry.second);
                 }
             }
         }
@@ -373,6 +374,23 @@ void MainWindow::RefreshDevices() {
         previousNames_[device.instanceId] = device.displayName;
     }
     RebuildTrayTip();
+}
+
+void MainWindow::ShowConnectionNotice(bool inserted,const std::wstring& name) {
+    const auto& strings=i18n::I18n::Instance();
+    QUERY_USER_NOTIFICATION_STATE state{};
+    const bool quiet=SUCCEEDED(SHQueryUserNotificationState(&state)) && state!=QUNS_ACCEPTS_NOTIFICATIONS;
+    // Let the shell deliver or suppress notifications in quiet/fullscreen sessions.
+    if (!quiet && !HighContrast()) {
+        BOOL motion=FALSE;
+        SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
+        const auto& mode=Settings::Instance().Data().appearance;
+        bool dark=mode==L"dark" || (mode==L"auto" && SystemDark());
+        if (connectionToast_.Show(hwnd_,inserted,dark,motion!=FALSE,
+            strings.Get(inserted?i18n::StrId::ToastInserted:i18n::StrId::ToastRemoved),name)) return;
+    }
+    tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,strings.Format(
+        inserted?i18n::StrId::DeviceInserted:i18n::StrId::DeviceRemoved,name));
 }
 
 void MainWindow::RestoreTrayIcon() {
@@ -444,6 +462,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     if (media && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(media), strings.Get(i18n::StrId::MenuMedia)))
         DestroyMenu(media);
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     HMENU manage = (aliases || hide || !hidden.empty()) ? CreatePopupMenu() : nullptr;
     // If the submenu cannot be created, the original actions remain available.
     HMENU parent = manage ? manage : menu;
@@ -462,7 +481,6 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                     preferences.DeviceName(current->instanceId,current->displayName);
                 AppendMenuW(restore, MF_STRING, kRestoreBase + restoreIds.size(), MenuLabel(name).c_str());
                 restoreIds.push_back(item.first);
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
             }
             if (!AppendMenuW(parent, MF_POPUP,reinterpret_cast<UINT_PTR>(restore),strings.Get(i18n::StrId::RestoreDevice)))
                 DestroyMenu(restore);
@@ -471,6 +489,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     if (manage && !AppendMenuW(menu, MF_POPUP,reinterpret_cast<UINT_PTR>(manage),strings.Get(i18n::StrId::ManageDevices)))
         DestroyMenu(manage);
     const auto reconnectTarget = stoppedTarget_;
+    const auto reconnectDisk = stoppedDisk_;
     if (!reconnectTarget.empty() && !hidden.count(str::Lower(stoppedDisk_))) {
         std::wstring caption;
         for (wchar_t ch : strings.Format(i18n::StrId::ReconnectDevice, stoppedName_)) {
@@ -490,7 +509,6 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     POINT cursor{};
     if (position != nullptr) {
         cursor = *position;
-    const auto reconnectDisk = stoppedDisk_;
     } else {
         GetCursorPos(&cursor);
     }

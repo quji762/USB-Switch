@@ -76,6 +76,8 @@ const Entry kStrings[] = {
     {StrId::EjectFailText, L"无法弹出“%1”。\n\n%2", L"Could not remove “%1”.\n\n%2"},
 
     // Hot-plug balloons
+    {StrId::ToastInserted, L"设备已连接", L"Device connected"},
+    {StrId::ToastRemoved, L"设备已断开", L"Device disconnected"},
     {StrId::DeviceInserted, L"设备已插入：%1", L"Device connected: %1"},
     {StrId::DeviceRemoved, L"设备已拔出：%1", L"Device disconnected: %1"},
 
