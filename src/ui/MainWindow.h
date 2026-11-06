@@ -47,7 +47,7 @@ private:
 
     bool OnCreate(HWND hwnd);
     void OnDestroy();
-    void OnTrayNotify(LPARAM lParam);
+    void OnTrayNotify(WPARAM wParam, LPARAM lParam);
     void OnDeviceChange(UINT event, LPARAM data);
     void OnRescanTimer();
     // position == nullptr means "use the cursor" (mouse activation).

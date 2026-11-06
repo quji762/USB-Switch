@@ -125,7 +125,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
             OnDeviceChange(static_cast<UINT>(wParam), lParam);
             return 0;
         case kTrayMessage:
-            OnTrayNotify(lParam);
+            OnTrayNotify(wParam, lParam);
             return 0;
         case kWakeMessage:
             HandleSecondInstance();
@@ -209,21 +209,19 @@ HICON MainWindow::LoadTrayIconAt(int size) const {
     return LoadIconW(nullptr, IDI_APPLICATION);
 }
 
-void MainWindow::OnTrayNotify(LPARAM lParam) {
-    // WM_CONTEXTMENU carries the icon position in lParam, which the shell
-    // supplies when the menu is invoked from the keyboard - using the cursor
-    // position instead would open the menu on the wrong monitor.
-    POINT fromShell{};
-    fromShell.x = GET_X_LPARAM(lParam);
-    fromShell.y = GET_Y_LPARAM(lParam);
-
+void MainWindow::OnTrayNotify(WPARAM wParam, LPARAM lParam) {
     switch (LOWORD(lParam)) {
-        case WM_RBUTTONUP:
         case WM_CONTEXTMENU:
-            ShowTrayMenu(&fromShell);
-            break;
-        case WM_LBUTTONUP:
         case NIN_SELECT:
+        case NIN_KEYSELECT: {
+            // Version 4 packs the anchor in wParam and the event in lParam.
+            POINT anchor{GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam)};
+            ShowTrayMenu(&anchor);
+            break;
+        }
+        case WM_RBUTTONUP:
+        case WM_LBUTTONUP:
+            // Legacy mouse callbacks supply no reliable anchor.
             ShowTrayMenu();
             break;
         default:

@@ -35,7 +35,7 @@ bool TrayIcon::Create(HWND hwnd, UINT callbackMessage, HICON icon, std::wstring_
     data_.cbSize = sizeof(data_);
     data_.hWnd = hwnd;
     data_.uID = kIconId;
-    data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     data_.uCallbackMessage = callbackMessage;
     data_.hIcon = icon;
     data_.uVersion = NOTIFYICON_VERSION_4;
@@ -63,7 +63,7 @@ void TrayIcon::UpdateIcon(HICON icon) {
 
 void TrayIcon::UpdateTooltip(std::wstring_view tooltip) {
     if (!created_) return;
-    data_.uFlags = NIF_TIP;
+    data_.uFlags = NIF_TIP | NIF_SHOWTIP;
     CopyToTip(tooltip);
     notify_(NIM_MODIFY, &data_);
 }
