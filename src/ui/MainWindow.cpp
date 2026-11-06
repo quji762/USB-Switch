@@ -12,6 +12,7 @@
 #include "app/SingleInstance.h"
 #include "core/Ejector.h"
 #include "core/MediaEject.h"
+#include "core/RestartProcess.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "resource.h"
@@ -117,8 +118,27 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
             return 0;
         case WM_TIMER:
             if (wParam == kReconnectTimer) {
+                if (!reconnectDeadline_) return 0;
                 RefreshDevices();
+                if (!reconnectDeadline_) return 0;
+                if (restartProcess_) {
+                    auto code = FinishedRestart(restartProcess_.Get());
+                    if (!code) return 0; // Still running: keep the menu action disabled.
+                    restartProcess_.Reset();
+                    if (*code != ERROR_SUCCESS) {
+                        KillTimer(hwnd_, kReconnectTimer);
+                        reconnectDeadline_ = 0;
+                        const auto& strings = i18n::I18n::Instance();
+                        QE_LOG_WARN(L"PnPUtil restart exited with %lu", *code);
+                        const auto reason = str::Win32ErrorMessage(*code) + L" (" + std::to_wstring(*code) + L")";
+                        MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectFailed, reason).c_str(),
+                                    QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
+                        return 0;
+                    }
+                    reconnectDeadline_ = GetTickCount64() + 10000;
+                }
                 if (reconnectDeadline_ && GetTickCount64() >= reconnectDeadline_) {
+                    restartProcess_.Reset();
                     KillTimer(hwnd_, kReconnectTimer);
                     reconnectDeadline_ = 0;
                     MessageBoxW(hwnd_, i18n::I18n::Instance().Get(i18n::StrId::ReconnectTimeout),
@@ -198,6 +218,7 @@ bool MainWindow::OnCreate(HWND hwnd) {
 }
 
 void MainWindow::OnDestroy() {
+    restartProcess_.Reset();
     UnregisterHotKey(hwnd_, kMenuHotkey);
     notifier_.Unregister();
     tray_.Remove();
@@ -282,6 +303,7 @@ void MainWindow::RefreshDevices() {
     KillTimer(hwnd_, kRescanTimerId);
     const auto snapshot = devices_.Devices();
     if (!stoppedDisk_.empty() && devices_.FindByInstanceId(stoppedDisk_)) {
+        restartProcess_.Reset();
         stoppedDisk_.clear();
         stoppedTarget_.clear();
         reconnectDeadline_ = 0;
@@ -433,18 +455,21 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                 const std::wstring args = L"/restart-device \"" + reconnectTarget + L"\"";
                 SHELLEXECUTEINFOW run{};
                 run.cbSize = sizeof(run);
+                run.fMask = SEE_MASK_NOCLOSEPROCESS;
                 run.hwnd = hwnd_;
                 run.lpVerb = L"runas";
                 run.lpFile = exe.c_str();
                 run.lpParameters = args.c_str();
                 run.nShow = SW_HIDE;
                 error = ShellExecuteExW(&run) ? ERROR_SUCCESS : GetLastError();
+                if (error == ERROR_SUCCESS) restartProcess_.Reset(run.hProcess);
                 if (error == ERROR_CANCELLED) return;
             }
         }
         if (error == ERROR_SUCCESS) {
             reconnectDeadline_ = GetTickCount64() + 10000;
             if (!SetTimer(hwnd_, kReconnectTimer, 500, nullptr)) {
+                restartProcess_.Reset();
                 reconnectDeadline_ = 0;
                 MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectTimeout), QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
             }
@@ -548,6 +573,7 @@ void MainWindow::EjectDevice(const Device& device) {
         QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
         const EjectResult result = Ejector::Eject(instanceId);
         if (result.Succeeded()) {
+            restartProcess_.Reset();
             KillTimer(hwnd_, kReconnectTimer);
             reconnectDeadline_ = 0;
             stoppedDisk_ = instanceId;

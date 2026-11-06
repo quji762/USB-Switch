@@ -19,6 +19,7 @@
 #include "core/Ejector.h"
 #include "core/EjectJson.h"
 #include "core/RemovalTarget.h"
+#include "core/RestartProcess.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 
@@ -119,7 +120,23 @@ static void PrintW(const wchar_t* text) {
     WriteConsoleW(out, &newline, 1, &written, nullptr);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--finish-with-259") return STILL_ACTIVE;
+    wchar_t self[32768]{};
+    GetModuleFileNameW(nullptr, self, static_cast<DWORD>(std::size(self)));
+    std::wstring command = L"\"" + std::wstring(self) + L"\" --finish-with-259";
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION proc{};
+    if (CreateProcessW(self, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_SUSPENDED,
+                       nullptr, nullptr, &startup, &proc)) {
+        Check(!qe::FinishedRestart(proc.hProcess), "pending restart does not block or report success");
+        ResumeThread(proc.hThread);
+        Check(WaitForSingleObject(proc.hProcess, 5000) == WAIT_OBJECT_0 &&
+              qe::FinishedRestart(proc.hProcess) == STILL_ACTIVE, "terminal restart error 259 is reported");
+        CloseHandle(proc.hThread);
+        CloseHandle(proc.hProcess);
+    } else Check(false, "start restart-monitor test child");
     qe::AppSettings input;
     input.aliases[L"id-a"] = L"Backup";
     input.menuHotkey = L"J";

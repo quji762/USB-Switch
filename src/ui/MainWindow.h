@@ -10,6 +10,7 @@
 #include "core/DeviceManager.h"
 #include "core/DeviceNotifier.h"
 #include "ui/TrayIcon.h"
+#include "util/Win32.h"
 
 namespace qe {
 
@@ -60,6 +61,7 @@ private:
     bool menuOpen_ = false;
     std::wstring stoppedDisk_, stoppedTarget_, stoppedName_;
     ULONGLONG reconnectDeadline_ = 0;
+    qe::Handle restartProcess_;
     void OpenSettings();
     void OpenAbout();
     HICON LoadTrayIcon() const;
