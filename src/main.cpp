@@ -19,6 +19,7 @@
 #include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
+#include "core/EjectJson.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "util/Str.h"
@@ -71,6 +72,10 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
                 options.usageError = true;  // missing argument
             }
             if (str::Trim(options.ejectTarget).empty()) options.usageError = true;
+            if (i + 1 < argc && std::wstring_view(argv[i + 1]) == L"--json") {
+                options.jsonOutput = true;
+                ++i;
+            }
         } else {
             options.usageError = true;  // unknown switch
         }
@@ -167,11 +172,11 @@ int RunListDevices(bool jsonOutput) {
     return 0;
 }
 
-int RunEject(const std::wstring& target) {
+int RunEject(const std::wstring& target, bool jsonOutput) {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
     if (!manager.Refresh()) {
-        PrintLine(strings.Get(i18n::StrId::ErrorEnumFailed));
+        PrintLine(jsonOutput ? LR"({"status":"enumeration_failed","retryable":false})" : strings.Get(i18n::StrId::ErrorEnumFailed));
         return 1;
     }
 
@@ -184,11 +189,15 @@ int RunEject(const std::wstring& target) {
         if (!device) device = FindByMountPath(manager.Devices(), target);
     }
     if (!device) {
-        PrintLine(strings.Format(i18n::StrId::CliUnknownDevice, target));
+        PrintLine(jsonOutput ? LR"({"status":"not_found","retryable":false})" : strings.Format(i18n::StrId::CliUnknownDevice, target));
         return 2;
     }
 
     const EjectResult result = Ejector::Eject(device->instanceId);
+    if (jsonOutput) {
+        PrintLine(EjectJson(result, device->instanceId).Dump());
+        return result.Succeeded() ? 0 : 1;
+    }
     if (result.Succeeded()) {
         PrintLine(strings.Format(i18n::StrId::CliEjectOk, device->displayName));
         return 0;
@@ -236,7 +245,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     } else if (options.listDevices) {
         exitCode = qe::RunListDevices(options.jsonOutput);
     } else if (!options.ejectTarget.empty()) {
-        exitCode = qe::RunEject(options.ejectTarget);
+        exitCode = qe::RunEject(options.ejectTarget, options.jsonOutput);
     } else {
         qe::App app(instance);
         const qe::InitStatus status = app.Init(options.openSettings);

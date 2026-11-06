@@ -115,6 +115,8 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 
 每次调用只接受一个操作。多个弹出目标或空目标会显示用法并返回退出码 2，不会弹出设备。也可以将 `--list` 输出的完整 PnP 实例 ID 传给 `--eject`；含有 `&` 时请加引号。
 
+脚本可用 `--eject <目标> --json` 执行弹出并读取结果。`status` 为 `ejected`（退出码 0）、`not_found`（2），或 `vetoed`、`failed`、`ineligible`、`enumeration_failed`（1）。系统拒绝时会提供 `vetoType`、`vetoName` 和 `retryable`；该标记仅表示稍后重试可能有用，程序不会自动重试。
+
 脚本可运行 `--list --json`。成功时输出 UTF-8 JSON 数组，没有设备时为 `[]`；
 枚举失败时返回退出码 1，并输出 `{"error":"enumeration_failed"}`。字段名不随界面语言变化。
 `mountPaths` 列出已识别的挂载路径（含盘符根目录和文件夹），`driveLetters` 仅列出设备自身的盘符，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。

@@ -42,10 +42,10 @@ try {
         $handle.WriteByte(1)
         $handle.Flush($true)
         if ((Get-TestDevice).instanceId -cne $device.instanceId) { throw 'Device changed before veto check' }
-        $result = & $exePath --eject $device.instanceId | Out-String
+        $result = & $exePath --eject $device.instanceId --json | Out-String
         if ($LASTEXITCODE -ne 1) { throw "Expected a rejected eject while file was open: $result" }
-        $log = Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'USB-Switch\logs\usb-switch-cli.log') -Raw
-        if ($log -notmatch 'eject vetoed \(type \d+') { throw 'Failure did not come from a PnP veto' }
+        $report = $result | ConvertFrom-Json
+        if ($report.status -ne 'vetoed' -or $report.instanceId -cne $device.instanceId) { throw "Unexpected eject response: $result" }
         Write-Host 'Windows vetoed removal with the probe open'
     } finally { $handle.Dispose() }
     if ((Get-TestDevice).instanceId -cne $device.instanceId -or (Test-Path -LiteralPath $probe)) {
@@ -53,15 +53,16 @@ try {
     }
     # Volume filters can briefly veto a second query-remove after the probe closes.
     # Retry only a fresh PnP veto against the original identity, for at most three attempts.
-    $logPath = Join-Path $env:LOCALAPPDATA 'USB-Switch\logs\usb-switch-cli.log'
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $same = @(Get-Inventory | Where-Object { $_.instanceId -ceq $device.instanceId -and $_.driveLetters -contains $driveName })
         if ($same.Count -ne 1) { throw 'Original device no longer present before retry' }
-        $lines = @(Get-Content -LiteralPath $logPath).Count
-        $result = & $exePath --eject $device.instanceId | Out-String
-        if ($LASTEXITCODE -eq 0) { break }
-        $fresh = Get-Content -LiteralPath $logPath | Select-Object -Skip $lines
-        if ($attempt -eq 3 -or !($fresh -match 'eject vetoed \(type \d+')) { throw "Removal did not succeed: $result" }
+        $result = & $exePath --eject $device.instanceId --json | Out-String
+        $code = $LASTEXITCODE
+        $report = $result | ConvertFrom-Json
+        if ($code -eq 0 -and $report.status -eq 'ejected' -and $report.instanceId -ceq $device.instanceId) { break }
+        if ($attempt -eq 3 -or $code -ne 1 -or $report.status -ne 'vetoed' -or $report.instanceId -cne $device.instanceId -or $report.retryable -ne $true) {
+            throw "Removal did not succeed: $result"
+        }
         Write-Host "Windows still vetoed removal after close; retrying ($attempt/3)"
         Start-Sleep -Seconds 2
     }

@@ -17,6 +17,7 @@
 #include "core/DeviceJson.h"
 #include "core/DeviceManager.h"
 #include "core/Ejector.h"
+#include "core/EjectJson.h"
 #include "core/RemovalTarget.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
@@ -277,6 +278,11 @@ int main() {
     refusal.status = qe::EjectStatus::Vetoed;
     refusal.vetoType = PNP_VetoDevice;
     Check(refusal.CanRetry(), "device veto after closing files offers a manual retry");
+    refusal.vetoApplication = L"STORAGE\\Volume";
+    const auto veto = qe::EjectJson(refusal, L"test-id");
+    Check(veto.GetString(L"status", L"") == L"vetoed" && veto.GetBool(L"retryable", false) &&
+          veto.GetString(L"vetoName", L"") == refusal.vetoApplication && veto.GetNumber(L"vetoType", -1) == PNP_VetoDevice,
+          "structured eject response preserves device veto and retry eligibility");
     refusal.vetoType = static_cast<PNP_VETO_TYPE>(12); // PNP_VetoInsufficientRights
     Check(!refusal.CanRetry(), "insufficient rights do not suggest a transient busy device");
     refusal.status = qe::EjectStatus::Failed;

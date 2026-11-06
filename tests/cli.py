@@ -29,3 +29,6 @@ for row in rows:
     assert isinstance(row["driveLetters"], list)
     assert isinstance(row["ejectable"], bool)
 print(f"UTF-8 JSON inventory parsed: {len(rows)} device(s)")
+
+run = subprocess.run([exe, "--eject", "USB-Switch-missing-device", "--json"], capture_output=True, encoding="utf-8", timeout=20)
+assert run.returncode == 2 and json.loads(run.stdout) == {"status": "not_found", "retryable": False}
