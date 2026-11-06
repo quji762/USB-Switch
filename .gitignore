@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+dist/
+*.obj
+*.o
+*.exe
+*.pdb
+*.ilk
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+.vs/
+.cache/
+
+# Local editor state
+*.user
+.idea/
+.vscode/
+
+# Python tooling artifacts (tools/*.py)
+__pycache__/
+*.pyc

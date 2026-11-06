@@ -1,0 +1,28 @@
+#pragma once
+// Resource identifiers shared by the .rc files and the C++ sources.
+// Keep numeric values stable: they are part of the binary's public surface
+// (used by the installer and by future localization builds).
+//
+// The application icon is *not* listed here: it is a named resource
+// ("QuickEjectIcon") declared in version.rc, so no id can drift.
+
+#define IDD_ABOUT                       201
+#define IDD_SETTINGS                    202
+
+// About dialog
+#define IDC_ABOUT_APPNAME               301
+#define IDC_ABOUT_DESC                  302
+#define IDC_ABOUT_WEBSITE               303
+
+// Settings dialog
+#define IDC_SET_STARTUP                 401
+#define IDC_SET_NOTIFY                  402
+#define IDC_SET_CONFIRM                 403
+#define IDC_SET_LANG_LABEL              404
+#define IDC_SET_LANG                    405
+#define IDC_SET_NOTE                    406
+
+// winres.h on some toolchains does not define IDC_STATIC.
+#ifndef IDC_STATIC
+#define IDC_STATIC (-1)
+#endif

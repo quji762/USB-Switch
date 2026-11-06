@@ -1,0 +1,47 @@
+#pragma once
+// Rotating single-file logger.
+//
+// The log lives in %LOCALAPPDATA%\QuickEject\logs\quickeject.log and is written
+// as UTF-8. It is a diagnostic aid, not an audit trail: the previous file is
+// kept as .old once the current one passes 1 MiB, and nothing is flushed
+// synchronously (buffering is left to the CRT/OS).
+
+#include <string>
+#include <string_view>
+
+namespace qe {
+
+enum class LogLevel { Debug, Info, Warning, Error };
+
+class Logger {
+public:
+    static Logger& Instance();
+
+    // Opens (creating if needed) <directory>\<baseName>.
+    void Init(const std::wstring& directory, std::wstring_view baseName = L"quickeject.log");
+    void Shutdown();
+
+    // Exactly one overload: two would be ambiguous for a plain literal
+    // (array-to-pointer conversion makes both candidates equally good). Every
+    // call passes at least the format string, and a narrow literal is a
+    // compile error by design - all log formats are wide.
+    void Log(LogLevel level, const wchar_t* format, ...);
+
+    const std::wstring& Path() const noexcept { return path_; }
+    bool IsOpen() const noexcept { return file_ != nullptr; }
+
+private:
+    Logger() = default;
+    void WriteLine(const std::wstring& line);
+    void RotateIfNeeded();
+
+    std::wstring path_;
+    void* file_ = nullptr;  // HANDLE, kept opaque so this header stays light
+};
+
+}  // namespace qe
+
+#define QE_LOG_DEBUG(...) ::qe::Logger::Instance().Log(::qe::LogLevel::Debug, __VA_ARGS__)
+#define QE_LOG_INFO(...)  ::qe::Logger::Instance().Log(::qe::LogLevel::Info, __VA_ARGS__)
+#define QE_LOG_WARN(...)  ::qe::Logger::Instance().Log(::qe::LogLevel::Warning, __VA_ARGS__)
+#define QE_LOG_ERROR(...) ::qe::Logger::Instance().Log(::qe::LogLevel::Error, __VA_ARGS__)

@@ -1,0 +1,22 @@
+#pragma once
+// Product identity: single source of truth for name, version and vendor data.
+// Configured by CMake from this template; edit the template, not the generated
+// header. The same values feed the Windows version resource.
+
+#define QUICKEJECT_APP_NAME         "QuickEject"
+#define QUICKEJECT_APP_NAME_W       L"QuickEject"
+#define QUICKEJECT_APP_DESCRIPTION  "USB Safe Remove Tool"
+#define QUICKEJECT_COMPANY          "QuickEject Project"
+#define QUICKEJECT_COPYRIGHT        "Copyright (c) 2026 QuickEject Project"
+#define QUICKEJECT_WEBSITE          "https://example.invalid/quickeject"
+#define QUICKEJECT_WEBSITE_W        L"https://example.invalid/quickeject"
+
+#define QUICKEJECT_VERSION_MAJOR    @PROJECT_VERSION_MAJOR@
+#define QUICKEJECT_VERSION_MINOR    @PROJECT_VERSION_MINOR@
+#define QUICKEJECT_VERSION_PATCH    @PROJECT_VERSION_PATCH@
+#define QUICKEJECT_VERSION_STRING   "@PROJECT_VERSION@"
+#define QUICKEJECT_VERSION_STRING_W L"@PROJECT_VERSION@"
+
+// Full "name version" string, e.g. "QuickEject 1.0.0".
+#define QUICKEJECT_NAME_AND_VERSION   "QuickEject @PROJECT_VERSION@"
+#define QUICKEJECT_NAME_AND_VERSION_W L"QuickEject @PROJECT_VERSION@"

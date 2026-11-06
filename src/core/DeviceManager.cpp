@@ -1,0 +1,344 @@
+#include "core/DeviceManager.h"
+
+// initguid.h must come first: it turns DEFINE_GUID into definitions so the
+// GUIDs we reference (GUID_DEVINTERFACE_DISK) are real symbols, not externs.
+#include <initguid.h>
+
+#include <windows.h>
+#include <winioctl.h>   // IOCTL_STORAGE_*, STORAGE_DEVICE_NUMBER, GUID_DEVINTERFACE_DISK
+#include <setupapi.h>
+#include <devpkey.h>
+
+#include <cwchar>
+#include <iterator>
+
+#include "app/Logger.h"
+#include "util/Str.h"
+#include "util/Win32.h"
+
+namespace qe {
+namespace {
+
+constexpr size_t kDescriptorBufferSize = 4096;
+
+// STORAGE_DEVICE_DESCRIPTOR stores its strings as raw ANSI bytes at offsets
+// from the start of the descriptor. Offsets are only valid inside the bytes
+// the IOCTL actually returned, so every read is bounds checked.
+std::string DescriptorStringAt(const BYTE* base, DWORD validBytes, DWORD offset) {
+    if (offset == 0 || offset >= validBytes) return {};
+    const char* text = reinterpret_cast<const char*>(base) + offset;
+    const size_t maxLength = static_cast<size_t>(validBytes - offset);
+    const size_t length = strnlen(text, maxLength);
+    return std::string(text, length);
+}
+
+std::wstring QueryDevicePropertyString(HDEVINFO info, const SP_DEVINFO_DATA& data,
+                                       const DEVPROPKEY& key) {
+    WCHAR buffer[512];
+    DEVPROPTYPE type = DEVPROP_TYPE_EMPTY;
+    DWORD size = sizeof(buffer);
+    if (SetupDiGetDevicePropertyW(info, const_cast<PSP_DEVINFO_DATA>(&data), &key, &type,
+                                  reinterpret_cast<PBYTE>(buffer), size, &size, 0)) {
+        return type == DEVPROP_TYPE_STRING ? std::wstring(buffer) : std::wstring();
+    }
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) return {};
+    std::vector<WCHAR> large(static_cast<size_t>(size) / sizeof(WCHAR) + 2, L'\0');
+    size = static_cast<DWORD>(large.size() * sizeof(WCHAR));
+    if (!SetupDiGetDevicePropertyW(info, const_cast<PSP_DEVINFO_DATA>(&data), &key, &type,
+                                   reinterpret_cast<PBYTE>(large.data()), size, &size, 0)) {
+        return {};
+    }
+    return type == DEVPROP_TYPE_STRING ? std::wstring(large.data()) : std::wstring();
+}
+
+struct DiskQuery {
+    ULONG deviceNumber = 0xFFFFFFFF;
+    ULONG storageBusType = 0xFFFFFFFF;
+    bool removableMedia = false;
+    std::string vendor;
+    std::string product;
+};
+
+// Zero-access open + IOCTLs. Devices that refuse to open cannot be identified
+// as removable, so the caller treats failure as "skip this interface".
+bool QueryDisk(HANDLE handle, DiskQuery& out) {
+    STORAGE_DEVICE_NUMBER number{};
+    DWORD returned = 0;
+    if (!DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &number, sizeof(number),
+                         &returned, nullptr)) {
+        QE_LOG_DEBUG(L"IOCTL_STORAGE_GET_DEVICE_NUMBER failed: %lu", GetLastError());
+        return false;
+    }
+    out.deviceNumber = number.DeviceNumber;
+
+    std::vector<BYTE> buffer(kDescriptorBufferSize);
+    STORAGE_PROPERTY_QUERY query{};
+    query.PropertyId = StorageDeviceProperty;
+    query.QueryType = PropertyStandardQuery;
+    if (DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
+                        static_cast<DWORD>(buffer.size()), &returned, nullptr)) {
+        const auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer.data());
+        // The driver reports the descriptor size; trust the smaller of the two.
+        const DWORD validBytes = (descriptor->Size != 0 && descriptor->Size < returned)
+                                     ? descriptor->Size
+                                     : returned;
+        out.storageBusType = descriptor->BusType;
+        out.removableMedia = descriptor->RemovableMedia != FALSE;
+        out.vendor = DescriptorStringAt(buffer.data(), validBytes, descriptor->VendorIdOffset);
+        out.product = DescriptorStringAt(buffer.data(), validBytes, descriptor->ProductIdOffset);
+    }
+    return true;
+}
+
+}  // namespace
+
+std::wstring DeviceManager::BuildDisplayName(const DiskCandidate& disk) {
+    std::wstring name;
+    if (!disk.volumeLabel.empty()) {
+        name = disk.volumeLabel;
+    } else if (!disk.friendlyName.empty()) {
+        name = disk.friendlyName;
+    } else if (!disk.product.empty()) {
+        name = disk.product;  // already UTF-16
+    } else if (!disk.deviceDescription.empty()) {
+        name = disk.deviceDescription;
+    } else {
+        name = L"USB";
+    }
+
+    if (!disk.driveLetters.empty()) {
+        name += L" (";
+        name += disk.driveLetters;
+        name += L")";
+    }
+    if (disk.sizeBytes > 0) {
+        name += L" — ";
+        name += str::FileSizeString(disk.sizeBytes);
+    }
+    return name;
+}
+
+BusType DeviceManager::ToBusType(ULONG storageBusType) {
+    switch (static_cast<STORAGE_BUS_TYPE>(storageBusType)) {
+        case BusTypeUsb: return BusType::Usb;
+        case BusType1394: return BusType::FireWire;
+        case BusTypeSd: return BusType::Sd;
+        case BusTypeScsi: return BusType::Scsi;
+        case BusTypeAta: return BusType::Ata;
+        case BusTypeSata: return BusType::Sata;
+        case BusTypeNvme: return BusType::Nvme;
+        default: return BusType::Unknown;
+    }
+}
+
+const wchar_t* BusTypeName(BusType busType) {
+    switch (busType) {
+        case BusType::Usb: return L"USB";
+        case BusType::FireWire: return L"1394";
+        case BusType::Sd: return L"SD";
+        case BusType::Scsi: return L"SCSI";
+        case BusType::Ata: return L"ATA";
+        case BusType::Sata: return L"SATA";
+        case BusType::Nvme: return L"NVMe";
+        case BusType::Unknown: return L"?";
+        case BusType::Other: return L"other";
+    }
+    return L"?";
+}
+
+void DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
+    DevInfoSet info(SetupDiGetClassDevsW(&GUID_DEVINTERFACE_DISK, nullptr, nullptr,
+                                         DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
+    if (!info) {
+        QE_LOG_ERROR(L"SetupDiGetClassDevs(GUID_DEVINTERFACE_DISK) failed: %lu", GetLastError());
+        return;
+    }
+
+    for (DWORD index = 0;; ++index) {
+        SP_DEVICE_INTERFACE_DATA interfaceData{};
+        interfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+        if (!SetupDiEnumDeviceInterfaces(info.Get(), nullptr, &GUID_DEVINTERFACE_DISK, index,
+                                         &interfaceData)) {
+            if (GetLastError() != ERROR_NO_MORE_ITEMS) {
+                QE_LOG_WARN(L"SetupDiEnumDeviceInterfaces failed: %lu", GetLastError());
+            }
+            break;
+        }
+
+        DWORD detailSize = 0;
+        SetupDiGetDeviceInterfaceDetailW(info.Get(), &interfaceData, nullptr, 0, &detailSize, nullptr);
+        if (detailSize == 0) continue;
+        std::vector<BYTE> detailBuffer(detailSize);
+        auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(detailBuffer.data());
+        detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+
+        SP_DEVINFO_DATA deviceData{};
+        deviceData.cbSize = sizeof(SP_DEVINFO_DATA);
+        if (!SetupDiGetDeviceInterfaceDetailW(info.Get(), &interfaceData, detail, detailSize,
+                                              &detailSize, &deviceData)) {
+            QE_LOG_DEBUG(L"SetupDiGetDeviceInterfaceDetail failed: %lu", GetLastError());
+            continue;
+        }
+
+        DiskCandidate disk;
+        disk.devInst = deviceData.DevInst;
+
+        WCHAR instanceId[512];
+        if (SetupDiGetDeviceInstanceIdW(info.Get(), &deviceData, instanceId,
+                                        static_cast<DWORD>(std::size(instanceId)), nullptr)) {
+            disk.instanceId = instanceId;
+        }
+        disk.friendlyName = QueryDevicePropertyString(info.Get(), deviceData, DEVPKEY_Device_FriendlyName);
+        disk.deviceDescription =
+            QueryDevicePropertyString(info.Get(), deviceData, DEVPKEY_Device_DeviceDesc);
+
+        // Zero access rights: enough for IOCTLs, never blocks the device.
+        Handle device(CreateFileW(detail->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                  OPEN_EXISTING, 0, nullptr));
+        if (!device) {
+            QE_LOG_DEBUG(L"cannot open %ls (%lu); interface skipped", detail->DevicePath,
+                         GetLastError());
+            continue;
+        }
+        DiskQuery query;
+        if (!QueryDisk(device.Get(), query)) continue;
+        disk.deviceNumber = query.deviceNumber;
+        disk.storageBusType = query.storageBusType;
+        disk.removableMedia = query.removableMedia;
+        disk.vendor = str::FromUtf8(query.vendor);
+        disk.product = str::FromUtf8(query.product);
+
+        disks.push_back(std::move(disk));
+    }
+}
+
+void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
+    WCHAR volumeName[MAX_PATH];
+    // FindFirstVolume's handle must be closed with FindVolumeClose, so it is
+    // deliberately not wrapped in the kernel-handle RAII type.
+    HANDLE find = FindFirstVolumeW(volumeName, static_cast<DWORD>(std::size(volumeName)));
+    if (find == INVALID_HANDLE_VALUE) {
+        QE_LOG_WARN(L"FindFirstVolume failed: %lu", GetLastError());
+        return;
+    }
+
+    do {
+        DWORD needed = 0;
+        GetVolumePathNamesForVolumeNameW(volumeName, nullptr, 0, &needed);
+        if (needed == 0) continue;
+        std::vector<WCHAR> mountPoints(static_cast<size_t>(needed) + 2, L'\0');
+        if (!GetVolumePathNamesForVolumeNameW(volumeName, mountPoints.data(), needed, &needed)) {
+            continue;
+        }
+
+        for (const WCHAR* mount = mountPoints.data(); *mount != L'\0';
+             mount += std::wcslen(mount) + 1) {
+            std::wstring path(mount);
+            if (path.size() < 2 || path[1] != L':') continue;  // drive letters only
+
+            UINT driveType = GetDriveTypeW(path.c_str());
+            if (driveType != DRIVE_REMOVABLE && driveType != DRIVE_FIXED) continue;
+
+            std::wstring devicePath = L"\\\\.\\" + path.substr(0, 2);
+            Handle volume(CreateFileW(devicePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                      nullptr, OPEN_EXISTING, 0, nullptr));
+            if (!volume) {
+                QE_LOG_DEBUG(L"cannot open volume %ls (%lu)", devicePath.c_str(), GetLastError());
+                continue;
+            }
+
+            STORAGE_DEVICE_NUMBER number{};
+            DWORD returned = 0;
+            if (!DeviceIoControl(volume.Get(), IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &number,
+                                 sizeof(number), &returned, nullptr)) {
+                continue;
+            }
+            if (number.DeviceType != FILE_DEVICE_DISK) continue;
+
+            for (auto& disk : disks) {
+                if (disk.deviceNumber == 0xFFFFFFFF || disk.deviceNumber != number.DeviceNumber) {
+                    continue;
+                }
+                if (!disk.driveLetters.empty()) disk.driveLetters += L", ";
+                disk.driveLetters += path.substr(0, 2);
+
+                WCHAR label[MAX_PATH + 1] = L"";
+                if (GetVolumeInformationW(path.c_str(), label, MAX_PATH + 1, nullptr, nullptr, nullptr,
+                                          nullptr, 0) &&
+                    label[0] != L'\0' && disk.volumeLabel.empty()) {
+                    disk.volumeLabel = label;
+                }
+
+                ULARGE_INTEGER totalBytes{};
+                if (GetDiskFreeSpaceExW(path.c_str(), nullptr, &totalBytes, nullptr) &&
+                    totalBytes.QuadPart > 0) {
+                    disk.sizeBytes = static_cast<uint64_t>(totalBytes.QuadPart);
+                }
+                break;  // one volume belongs to at most one disk candidate
+            }
+        }
+    } while (FindNextVolumeW(find, volumeName, static_cast<DWORD>(std::size(volumeName))));
+    FindVolumeClose(find);
+}
+
+void DeviceManager::Refresh() {
+    std::vector<DiskCandidate> disks;
+    CollectDiskInterfaces(disks);
+    AttachVolumes(disks);
+
+    DeviceList next;
+    next.reserve(disks.size());
+    for (auto& disk : disks) {
+        const BusType busType = ToBusType(disk.storageBusType);
+        const bool isUsb = busType == BusType::Usb;
+        if (!isUsb && !disk.removableMedia) continue;
+        if (disk.deviceNumber == 0xFFFFFFFF) continue;  // could not be identified
+
+        Device device;
+        device.instanceId = disk.instanceId;
+        device.devInst = disk.devInst;
+        device.deviceNumber = disk.deviceNumber;
+        device.busType = busType;
+        device.removable = disk.removableMedia || isUsb;
+        device.volumeLabel = disk.volumeLabel;
+        device.driveLetters = disk.driveLetters;
+        device.sizeBytes = disk.sizeBytes;
+        device.vendor = disk.vendor;
+        device.product = disk.product;
+        device.displayName = BuildDisplayName(disk);
+        next.push_back(std::move(device));
+    }
+
+    devices_ = std::move(next);
+    QE_LOG_DEBUG(L"device scan complete: %zu removable device(s)", devices_.size());
+    if (callback_) callback_();
+}
+
+const Device* DeviceManager::FindByDriveLetter(std::wstring_view driveLetter) const {
+    for (const auto& device : devices_) {
+        if (str::EqualsI(device.driveLetters, driveLetter)) return &device;
+        if (device.driveLetters.empty()) continue;
+        // Multi-volume device: compare each entry.
+        size_t start = 0;
+        for (;;) {
+            size_t comma = device.driveLetters.find(L',', start);
+            std::wstring_view entry = (comma == std::wstring::npos)
+                                          ? std::wstring_view(device.driveLetters).substr(start)
+                                          : std::wstring_view(device.driveLetters).substr(start, comma - start);
+            std::wstring trimmed = str::Trim(entry);
+            if (str::EqualsI(trimmed, driveLetter)) return &device;
+            if (comma == std::wstring::npos) break;
+            start = comma + 1;
+        }
+    }
+    return nullptr;
+}
+
+const Device* DeviceManager::FindByInstanceId(std::wstring_view instanceId) const {
+    for (const auto& device : devices_) {
+        if (device.instanceId == instanceId) return &device;
+    }
+    return nullptr;
+}
+
+}  // namespace qe

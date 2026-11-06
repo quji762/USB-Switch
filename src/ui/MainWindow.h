@@ -1,0 +1,80 @@
+#pragma once
+// The hidden window behind the tray icon: message pump target, tray menu owner
+// and the place where device changes turn into UI updates.
+
+#include <unordered_map>
+#include <vector>
+
+#include <windows.h>
+
+#include "core/DeviceManager.h"
+#include "core/DeviceNotifier.h"
+#include "ui/TrayIcon.h"
+
+namespace qe {
+
+class MainWindow {
+public:
+    // Unique window class name; also how a second instance finds this window.
+    static constexpr wchar_t kClassName[] = L"QuickEjectTrayWindow";
+
+    explicit MainWindow(HINSTANCE instance);
+    ~MainWindow();
+
+    MainWindow(const MainWindow&) = delete;
+    MainWindow& operator=(const MainWindow&) = delete;
+
+    // Registers the window class, creates the hidden window (which creates the
+    // tray icon and registers device notifications) and does the first scan.
+    bool Create();
+    void Destroy() noexcept;
+
+    HWND Handle() const noexcept { return hwnd_; }
+
+    // Registers or clears the "run at sign-in" entry for the current binary.
+    void ApplyRunAtStartup(bool enabled);
+
+    // Called when a second instance starts: show a hint instead of a window.
+    void HandleSecondInstance();
+
+private:
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    // Takes the window handle as a parameter on purpose: during WM_NCCREATE and
+    // WM_CREATE the hwnd_ member is still null, and DefWindowProcW must never
+    // be called with it.
+    LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+    void OnCreate(HWND hwnd);
+    void OnDestroy();
+    void OnTrayNotify(LPARAM lParam);
+    void OnDeviceChange(UINT event, LPARAM data);
+    void OnRescanTimer();
+    void ShowTrayMenu();
+    void OnMenuCommand(UINT commandId);
+    void RefreshDevices();
+    void RebuildTrayTip();
+    void EjectDevice(const Device& device);
+    void OpenSettings();
+    void OpenAbout();
+    HICON LoadTrayIcon() const;
+
+    HINSTANCE instance_ = nullptr;
+    HWND hwnd_ = nullptr;
+    HICON icon_ = nullptr;
+    UINT taskbarCreatedMessage_ = 0;
+
+    DeviceManager devices_;
+    DeviceNotifier notifier_;
+    TrayIcon tray_;
+
+    // instance id -> display name of the previous scan, for "device removed".
+    std::unordered_map<std::wstring, std::wstring> previousNames_;
+    // tray menu command id -> device instance id.
+    std::unordered_map<UINT, std::wstring> menuCommands_;
+    // Suppresses connect/disconnect balloons for the initial scan at startup.
+    bool firstScan_ = true;
+    // True while icon_ came from LoadImage and must be destroyed.
+    mutable bool ownsIcon_ = true;
+};
+
+}  // namespace qe

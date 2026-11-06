@@ -1,0 +1,40 @@
+// Dialog templates. All visible text is set at runtime from the i18n table so
+// the same binary can serve every language (see src/i18n/Strings.cpp).
+
+#include <winres.h>
+#include "resource.h"
+
+/////////////////////////////////////////////////////////////////////////////
+// About
+/////////////////////////////////////////////////////////////////////////////
+
+IDD_ABOUT DIALOGEX 0, 0, 236, 98
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT    "",              IDC_ABOUT_APPNAME,  14,  10, 208, 10
+    // Read-only multiline edit: static text does not word-wrap, this does.
+    EDITTEXT IDC_ABOUT_DESC,                  14,  26, 208, 44, ES_MULTILINE | ES_READONLY | WS_VSCROLL
+    LTEXT    "",              IDC_ABOUT_WEBSITE,  14,  76, 208, 10
+    DEFPUSHBUTTON "OK",       IDOK,               178, 90,  44, 14
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Settings
+/////////////////////////////////////////////////////////////////////////////
+
+IDD_SETTINGS DIALOGEX 0, 0, 224, 96
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    AUTOCHECKBOX "",          IDC_SET_STARTUP,     12,  8, 200, 10
+    AUTOCHECKBOX "",          IDC_SET_NOTIFY,      12, 22, 200, 10
+    AUTOCHECKBOX "",          IDC_SET_CONFIRM,     12, 36, 200, 10
+    LTEXT    "",              IDC_SET_LANG_LABEL,  12, 52,  40, 10
+    COMBOBOX IDC_SET_LANG,                      56, 50, 156, 44, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT    "",              IDC_SET_NOTE,        12, 68, 200, 10
+    DEFPUSHBUTTON "OK",       IDOK,                98, 84,  44, 14
+    PUSHBUTTON "Cancel",      IDCANCEL,           148, 84,  44, 14
+END
