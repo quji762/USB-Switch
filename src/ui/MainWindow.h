@@ -54,6 +54,7 @@ private:
     void RestoreTrayIcon();
     void RebuildTrayTip();
     void EjectDevice(const Device& device);
+    void EjectMedium(const Device& device);
     void ApplyMenuHotkey();
     std::wstring registeredKey_;
     bool menuOpen_ = false;

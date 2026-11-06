@@ -12,9 +12,13 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
-## 1.2.0：全局快捷键和设备别名
+## 开发版：只退出介质（实验功能）
 
-**开发版另有实验性命令（不含在 1.2.0 安装包中）：** 在确认目标确实是读卡器里的卡后，可运行 `usb-switch --eject-media E: --json`。把 `E:` 换成实际盘符。命令核对分区和卷，尝试锁住全部卷，再向驱动请求退出介质；它不会在失败时改为停止读卡器。如果分区不能全部对应到卷、文件正在使用、权限不足或驱动不支持操作，会返回失败及所在步骤。只有返回码为 0 且状态为 `media_ejected` 才表示驱动接受了退卡请求。真读卡器上的退卡、换卡仍待验证。
+要换读卡器里的卡，可在托盘选择 **只退出介质 → 目标设备**，核对卷标、盘符后选“是”。对话框默认选“否”。这个菜单按驱动报告的介质属性列出候选项，普通 U 盘也可能出现；若要拔下整个设备，请用主菜单的安全弹出。此功能尚未包含在 1.2.0 安装包内。
+
+脚本可以使用 `usb-switch --eject-media E: --json`。把 `E:` 换成实际盘符。命令核对分区和卷，尝试锁住全部卷，再向驱动请求退出介质。如果分区不能全部对应到卷、文件正在使用、权限不足或驱动不支持操作，会返回失败及所在步骤，不会改为停止读卡器。返回码为 0 且状态为 `media_ejected` 表示驱动接受了退卡请求。真读卡器上的退卡、换卡仍待验证。
+
+## 1.2.0：全局快捷键和设备别名
 
 在其他应用里按 **Ctrl+Alt+U** 可打开设备菜单，方向键选设备，Esc 取消。快捷键本身不会弹出设备。在“设置”中可改为 Ctrl+Alt 加其他字母或关闭；组合被其他程序占用时会提示。打开“设置设备别名”，选择设备并输入名称；留空保存可恢复原名。别名保存在当前用户配置中，菜单和确认框同时保留原卷标及盘符。别名按 Windows 提供的实例 ID 匹配，盘符变化不会单独改变绑定；如果换接口后 Windows 分配了不同 ID，需要重新命名。
 

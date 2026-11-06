@@ -11,6 +11,7 @@
 #include "app/Settings.h"
 #include "app/SingleInstance.h"
 #include "core/Ejector.h"
+#include "core/MediaEject.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "resource.h"
@@ -33,6 +34,7 @@ constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
 constexpr UINT kCommandSettings = 0x2002;
 constexpr UINT kAliasBase = 0x100000;
+constexpr UINT kMediaBase = 0x200000;
 constexpr int kMenuHotkey = 1;
 constexpr UINT kCommandLogs = 0x2005;
 constexpr UINT kCommandAbout = 0x2003;
@@ -329,6 +331,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     UINT itemPosition = 0;
     HMENU aliases = nullptr;
+    HMENU media = nullptr;
     const auto devices = scanRetryMs_ ? DeviceList{} : devices_.Devices();
     if (scanRetryMs_) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuScanUnavailable));
@@ -347,11 +350,17 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
             AppendMenuW(menu, MF_STRING, commandId,
                         strings.Format(i18n::StrId::MenuEjectItem, menuName).c_str());
             if (aliases) AppendMenuW(aliases, MF_STRING, kAliasBase + itemPosition, menuName.c_str());
+            if (device.driverMediaRemovable == true && !device.volumeInterfaces.empty()) {
+                if (!media) media = CreatePopupMenu();
+                if (media) AppendMenuW(media, MF_STRING, kMediaBase + itemPosition, menuName.c_str());
+            }
             ++itemPosition;
         }
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
 
+    if (media && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(media), strings.Get(i18n::StrId::MenuMedia)))
+        DestroyMenu(media);
     if (aliases && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
         DestroyMenu(aliases);
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
@@ -379,7 +388,10 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     if (!hwnd_ || command == 0) return;
     const auto id = static_cast<UINT>(command);
-    if (id >= kAliasBase) {
+    if (id >= kMediaBase) {
+        const auto index = id - kMediaBase;
+        if (!scanRetryMs_ && index < devices.size()) EjectMedium(devices[index]);
+    } else if (id >= kAliasBase) {
         const auto index = id - kAliasBase;
         if (!scanRetryMs_ && index < devices.size())
             Dialogs::EditAlias(instance_, hwnd_, devices[index].instanceId, devices[index].displayName);
@@ -419,6 +431,34 @@ void MainWindow::OnMenuCommand(UINT commandId) {
             break;
     }
 
+}
+
+void MainWindow::EjectMedium(const Device& device) {
+    const auto& strings = i18n::I18n::Instance();
+    using i18n::StrId;
+    const auto name = Settings::Instance().Data().DeviceName(device.instanceId, device.displayName);
+    if (MessageBoxW(hwnd_, strings.Format(StrId::MediaConfirm, name).c_str(), strings.Get(StrId::MenuMedia),
+                    MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES || !hwnd_) return;
+    DeviceManager live;
+    auto current = live.Refresh() ? live.FindByInstanceId(device.instanceId) : std::nullopt;
+    if (!current || current->volumeInterfaces.size() != device.volumeInterfaces.size() ||
+        !std::is_permutation(current->volumeInterfaces.begin(), current->volumeInterfaces.end(),
+                             device.volumeInterfaces.begin())) {
+        MessageBoxW(hwnd_, strings.Get(StrId::MediaChanged), strings.Get(StrId::MenuMedia), MB_ICONWARNING);
+    } else {
+        const auto result = EjectMedia(*current);
+        if (result.error) {
+            QE_LOG_WARN(L"media eject failed at %ls (%lu)", result.stage, result.error);
+            auto reason = str::Win32ErrorMessage(result.error);
+            if (std::wstring_view(result.stage) == L"lock_volume")
+                reason = std::wstring(strings.Get(StrId::MediaLockFailed)) + L"\n" + reason;
+            MessageBoxW(hwnd_, strings.Format(StrId::EjectFailText, name, reason).c_str(),
+                        strings.Get(StrId::MenuMedia), MB_ICONWARNING);
+        } else if (Settings::Instance().Data().showNotifications) {
+            tray_.ShowBalloon(strings.Get(StrId::MenuMedia), strings.Format(StrId::MediaOk, name), NIIF_INFO);
+        }
+    }
+    RefreshDevices();
 }
 
 void MainWindow::EjectDevice(const Device& device) {
