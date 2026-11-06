@@ -41,12 +41,12 @@ bool TrayIcon::Create(HWND hwnd, UINT callbackMessage, HICON icon, std::wstring_
     data_.uVersion = NOTIFYICON_VERSION_4;
     CopyToTip(tooltip);
 
-    if (Shell_NotifyIconW(NIM_ADD, &data_) == FALSE) {
+    if (notify_(NIM_ADD, &data_) == FALSE) {
         QE_LOG_ERROR(L"Shell_NotifyIcon(NIM_ADD) failed: %lu", GetLastError());
         return false;
     }
     // NOTIFYICON_VERSION_4 must be applied with a second call.
-    if (Shell_NotifyIconW(NIM_SETVERSION, &data_) == FALSE) {
+    if (notify_(NIM_SETVERSION, &data_) == FALSE) {
         QE_LOG_WARN(L"Shell_NotifyIcon(NIM_SETVERSION) failed: %lu", GetLastError());
     }
     created_ = true;
@@ -58,14 +58,14 @@ void TrayIcon::UpdateIcon(HICON icon) {
     if (!created_) return;
     data_.uFlags = NIF_ICON;
     data_.hIcon = icon;
-    Shell_NotifyIconW(NIM_MODIFY, &data_);
+    notify_(NIM_MODIFY, &data_);
 }
 
 void TrayIcon::UpdateTooltip(std::wstring_view tooltip) {
     if (!created_) return;
     data_.uFlags = NIF_TIP;
     CopyToTip(tooltip);
-    Shell_NotifyIconW(NIM_MODIFY, &data_);
+    notify_(NIM_MODIFY, &data_);
 }
 
 void TrayIcon::ShowBalloon(std::wstring_view title, std::wstring_view text, DWORD infoFlags) {
@@ -74,12 +74,12 @@ void TrayIcon::ShowBalloon(std::wstring_view title, std::wstring_view text, DWOR
     data_.dwInfoFlags = infoFlags;
     CopyToBalloonTitle(title);
     CopyToBalloonText(text);
-    Shell_NotifyIconW(NIM_MODIFY, &data_);
+    notify_(NIM_MODIFY, &data_);
 
-    // Clear the balloon payload again so it cannot reappear.
+    // Clear the local payload only. Sending NIF_INFO with empty text tells the
+    // shell to remove the notification that was just displayed.
     data_.szInfo[0] = L'\0';
     data_.szInfoTitle[0] = L'\0';
-    Shell_NotifyIconW(NIM_MODIFY, &data_);
 }
 
 void TrayIcon::Recreate(HICON icon, std::wstring_view tooltip) {
@@ -89,7 +89,7 @@ void TrayIcon::Recreate(HICON icon, std::wstring_view tooltip) {
 
 void TrayIcon::Remove() noexcept {
     if (created_) {
-        Shell_NotifyIconW(NIM_DELETE, &data_);
+        notify_(NIM_DELETE, &data_);
         created_ = false;
     }
 }

@@ -71,6 +71,20 @@ void Settings::Load() {
         QE_LOG_INFO(L"settings loaded from %ls", path.c_str());
         return;
     }
+    // Only fall back when the new file is absent. A damaged or inaccessible
+    // new file must never be silently replaced by stale settings.
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    const DWORD pathError = attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
+    if (pathError == ERROR_FILE_NOT_FOUND || pathError == ERROR_PATH_NOT_FOUND) {
+        const std::wstring directory = AppDataDirectory();
+        const size_t separator = directory.find_last_of(L"\\/");
+        const std::wstring legacy = directory.substr(0, separator) + L"\\QuickEject\\settings.json";
+        if (json::LoadFile(legacy, root, nullptr) && root.IsObject()) {
+            data_ = AppSettings::FromJson(root);
+            if (Save()) QE_LOG_INFO(L"migrated settings from %ls", legacy.c_str());
+            return;
+        }
+    }
     QE_LOG_INFO(L"using default settings (%ls)", error.c_str());
     data_ = AppSettings{};
 }

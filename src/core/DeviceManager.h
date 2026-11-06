@@ -20,6 +20,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <windows.h>
+#include <setupapi.h>
 
 #include "core/Device.h"
 
@@ -29,10 +31,22 @@ class DeviceManager {
 public:
     using ChangeCallback = std::function<void()>;
 
+    // Boundary around the system-wide enumeration calls. Supplying alternate
+    // implementations permits testing errors without altering real devices.
+    struct EnumerationApi {
+        decltype(&::SetupDiGetClassDevsW) getClassDevs = ::SetupDiGetClassDevsW;
+        decltype(&::FindFirstVolumeW) findFirstVolume = ::FindFirstVolumeW;
+        decltype(&::FindNextVolumeW) findNextVolume = ::FindNextVolumeW;
+    };
+
+    DeviceManager() = default;
+    explicit DeviceManager(EnumerationApi api) : api_(api) {}
+
     void SetChangeCallback(ChangeCallback callback) { callback_ = std::move(callback); }
 
-    // Re-enumerates everything, then invokes the change callback (if any).
-    void Refresh();
+    // Retain the last good snapshot on a system enumeration failure.
+    // The callback is invoked only after a successful refresh.
+    bool Refresh();
 
     // A snapshot copy, not a reference into devices_: Refresh() replaces the
     // whole vector, so a reference would dangle across a rescan.
@@ -65,12 +79,13 @@ private:
         uint64_t sizeBytes = 0;
     };
 
-    void CollectDiskInterfaces(std::vector<DiskCandidate>& disks);
-    void AttachVolumes(std::vector<DiskCandidate>& disks);
+    bool CollectDiskInterfaces(std::vector<DiskCandidate>& disks);
+    bool AttachVolumes(std::vector<DiskCandidate>& disks);
     static std::wstring BuildDisplayName(const DiskCandidate& disk);
 
     DeviceList devices_;
     ChangeCallback callback_;
+    EnumerationApi api_;
 };
 
 }  // namespace qe

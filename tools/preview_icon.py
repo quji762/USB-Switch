@@ -1,7 +1,9 @@
 from PIL import Image
+from pathlib import Path
 
-src = r"E:\Documents\deepseek-harness\default-workspace\quickeject\resources\quickeject.ico"
-dst = r"E:\Documents\deepseek-harness\default-workspace\quickeject\resources\preview.png"
+resources = Path(__file__).resolve().parent.parent / "resources"
+src = resources / "usb-switch.ico"
+dst = resources / "preview.png"
 
 im = Image.open(src)
 print("ico frames:", im.ico.sizes())

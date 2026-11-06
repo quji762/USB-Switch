@@ -33,6 +33,11 @@ std::wstring ReplaceAll(std::wstring_view s, std::wstring_view from, std::wstrin
 // "D:\Foo" -> "D:", "\\?\Volume{...}\" -> "" (no drive letter form).
 std::wstring DriveRootOf(std::wstring_view path);
 
+// A volume mount point is a drive letter only when it is exactly "X:\\".
+// Directory mount points such as "C:\\mnt\\usb\\" refer to a different
+// volume and must never be resolved by opening the host drive C:.
+bool IsDriveLetterMount(std::wstring_view path);
+
 // Base-1024 human readable size, e.g. "14.6 GB" / "512 MB" / "0 B".
 std::wstring FileSizeString(unsigned long long bytes);
 

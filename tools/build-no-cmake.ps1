@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds QuickEject with a bare MinGW-w64 toolchain - no CMake required.
+    Builds USB-Switch with a bare MinGW-w64 toolchain - no CMake required.
 
 .DESCRIPTION
     CMake is the primary build system (see CMakeLists.txt). This script exists
@@ -51,12 +51,12 @@ if (-not $gxx -or -not $windres) {
 
 # --- version: parsed from CMakeLists.txt so it stays the single source -----
 $cmakeText = Get-Content (Join-Path $root 'CMakeLists.txt') -Raw
-if ($cmakeText -notmatch 'project\(quickeject\s+VERSION\s+(\d+)\.(\d+)\.(\d+)') {
+if ($cmakeText -notmatch 'project\(usb-switch\s+VERSION\s+(\d+)\.(\d+)\.(\d+)') {
     throw 'could not read the version from CMakeLists.txt'
 }
 $major, $minor, $patch = $Matches[1], $Matches[2], $Matches[3]
 $version = "$major.$minor.$patch"
-Write-Host "building QuickEject $version ($Config) with $gxx"
+Write-Host "building USB-Switch $version ($Config) with $gxx"
 
 New-Item -ItemType Directory -Force -Path $genDir, $objDir, $distDir | Out-Null
 
@@ -76,16 +76,16 @@ New-Item -ItemType Directory -Force -Path (Split-Path $appInfoPath) | Out-Null
 
 # Paths in an .rc file must use forward slashes: windres treats a backslash
 # inside a quoted path as an escape sequence.
-$iconPath = (Resolve-Path (Join-Path $root 'resources\quickeject.ico')).Path.Replace('\', '/')
+$iconPath = (Resolve-Path (Join-Path $root 'resources\usb-switch.ico')).Path.Replace('\', '/')
 $manifestPath = (Resolve-Path (Join-Path $root 'resources\app.manifest')).Path.Replace('\', '/')
 
 $resource = Get-Content (Join-Path $root 'resources\version.rc.in') -Raw
 $resource = ($resource.Replace('@QUICKEJECT_RC_VERSION@', "$major,$minor,$patch,0"))
-$resource = ($resource.Replace('@QUICKEJECT_COMPANY@', 'QuickEject Project'))
+$resource = ($resource.Replace('@QUICKEJECT_COMPANY@', 'USB-Switch Project'))
 $resource = ($resource.Replace('@QUICKEJECT_APP_DESCRIPTION@', 'USB Safe Remove Tool'))
 $resource = ($resource.Replace('@QUICKEJECT_VERSION@', $version))
-$resource = ($resource.Replace('@QUICKEJECT_APP_NAME@', 'QuickEject'))
-$resource = ($resource.Replace('@QUICKEJECT_COPYRIGHT@', 'Copyright (c) 2026 QuickEject Project'))
+$resource = ($resource.Replace('@QUICKEJECT_APP_NAME@', 'USB-Switch'))
+$resource = ($resource.Replace('@QUICKEJECT_COPYRIGHT@', 'Copyright (c) 2026 USB-Switch Project'))
 $resource = ($resource.Replace('@QUICKEJECT_ICON_PATH@', $iconPath))
 $resource = ($resource.Replace('@QUICKEJECT_MANIFEST_PATH@', $manifestPath))
 [System.IO.File]::WriteAllText((Join-Path $genDir 'version.rc'), $resource,
@@ -124,11 +124,12 @@ foreach ($source in $sources) {
 
 # --- link ---------------------------------------------------------------------
 # -static: self-contained binary, no MinGW runtime DLLs next to the exe.
-$exe = Join-Path $distDir 'quickeject.exe'
+$exe = Join-Path $distDir 'usb-switch.exe'
 & $gxx -municode -mwindows -static -o $exe @objects `
     -lsetupapi -lcfgmgr32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
 if ($LASTEXITCODE -ne 0) { throw 'link failed' }
 
 Copy-Item (Join-Path $root 'README.md') (Join-Path $distDir 'README.md') -Force
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $distDir 'LICENSE') -Force
 Write-Host "built: $exe" -ForegroundColor Cyan
-Write-Host 'smoke test: .\dist\quickeject.exe --list'
+Write-Host 'smoke test: .\dist\usb-switch.exe --list'

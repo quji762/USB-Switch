@@ -40,11 +40,21 @@ unsigned long ConfigRetToWin32Error(CONFIGRET configRet) {
 
 }  // namespace
 
-EjectResult Ejector::Eject(DEVINST devInst) {
+EjectResult Ejector::Eject(const std::wstring& instanceId) {
     EjectResult result;
-    if (devInst == 0) {
+    if (instanceId.empty()) {
         result.status = EjectStatus::Failed;
         result.win32Error = ERROR_INVALID_PARAMETER;
+        return result;
+    }
+
+    DEVINST devInst = 0;
+    std::wstring mutableId = instanceId;  // CM_Locate_DevNodeW takes DEVINSTID_W.
+    const CONFIGRET locateRet = CM_Locate_DevNodeW(&devInst, mutableId.data(), CM_LOCATE_DEVNODE_NORMAL);
+    if (locateRet != CR_SUCCESS || devInst == 0) {
+        result.configRet = locateRet;
+        result.win32Error = locateRet == CR_SUCCESS ? ERROR_NOT_FOUND : ConfigRetToWin32Error(locateRet);
+        QE_LOG_WARN(L"device is no longer present (%ls, CONFIGRET 0x%02lX)", instanceId.c_str(), locateRet);
         return result;
     }
 

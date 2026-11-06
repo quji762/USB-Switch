@@ -17,6 +17,8 @@ public:
     static bool IsEnabled(std::wstring_view valueName);
     static bool SetEnabled(std::wstring_view valueName, const std::wstring& commandLine);
     static bool Clear(std::wstring_view valueName);
+    // Remove an entry only if it still has the expected command line.
+    static bool ClearIfMatches(std::wstring_view valueName, std::wstring_view expected);
 
     // Full path of the running executable, quoted command line ready.
     static std::wstring CommandLine();

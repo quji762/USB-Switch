@@ -98,7 +98,7 @@ void Logger::RotateIfNeededLocked() {
         // No QE_LOG_* here: Log() takes the same mutex this function is called
         // under, and std::mutex is not recursive. OutputDebugString reaches a
         // debugger without touching the log file.
-        OutputDebugStringW(str::Format(L"QuickEject: could not rotate %ls to %ls (%lu)",
+        OutputDebugStringW(str::Format(L"USB-Switch: could not rotate %ls to %ls (%lu)",
                                        path_.c_str(), backup.c_str(), GetLastError())
                                .c_str());
         path_.clear();

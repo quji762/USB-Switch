@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consistency checks for QuickEject sources.
+"""Consistency checks for USB-Switch sources.
 
 Verifies the two things that are easy to get wrong by hand:
 

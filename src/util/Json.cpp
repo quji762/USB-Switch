@@ -575,8 +575,9 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) 
     }
     Handle handle(file);
     DWORD written = 0;
-    BOOL ok = WriteFile(file, bom, 3, &written, nullptr);
-    ok = ok && WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
+    BOOL ok = WriteFile(file, bom, 3, &written, nullptr) && written == 3;
+    ok = ok && WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+         written == bytes.size();
     ok = ok && FlushFileBuffers(file);
     handle.Reset();  // close before the rename
     if (ok == FALSE) {

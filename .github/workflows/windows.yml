@@ -1,0 +1,59 @@
+name: Windows build and tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  mingw:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - name: Build
+        shell: msys2 {0}
+        run: pwsh -NoProfile -File ./build.ps1
+      - name: Check source strings and executable resources
+        shell: msys2 {0}
+        run: |
+          set -e
+          python tools/check-strings.py
+          python tools/check-resources.py dist/usb-switch.exe
+      - name: Run unit and device enumeration tests
+        shell: msys2 {0}
+        run: pwsh -NoProfile -File ./tools/run-tests.ps1 -Runtime
+      - name: Build and inspect MinGW executable
+        shell: msys2 {0}
+        run: |
+          set -e
+          cmake -S . -B build/mingw -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++ -DCMAKE_RC_COMPILER=windres
+          cmake --build build/mingw
+          python tools/check-resources.py build/mingw/usb-switch.exe
+          pwsh -NoProfile -File ./tests/migration.ps1 -Exe ./build/mingw/usb-switch.exe
+      - name: Check CLI
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'dist/usb-switch.exe'
+          $output = & $exe --version | Out-String
+          if ($LASTEXITCODE -ne 0 -or $output -notmatch 'usb-switch') { throw 'Version check failed' }
+          & $exe --eject= | Out-Null
+          if ($LASTEXITCODE -ne 2) { throw 'Empty eject target was not rejected' }
+          ./tests/migration.ps1 -Exe $exe
+      - name: Build and test installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not found on runner' }
+          & $iscc /Qp installer/usb-switch.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          $setup = Get-ChildItem dist/installer/usb-switch-setup-*.exe | Select-Object -First 1
+          if (!$setup) { throw 'Installer not found' }
+          ./tests/installer.ps1 -Installer $setup.FullName

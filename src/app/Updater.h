@@ -6,7 +6,7 @@
 // interface below keeps that decision open without blocking anything else.
 //
 // A production implementation would:
-//   1. GET https://<host>/quickeject/latest.json over WinHTTP (TLS pinned cert
+//   1. GET https://<host>/usb-switch/latest.json over WinHTTP (TLS pinned cert
 //      store, no custom validation).
 //   2. Compare versions, then download a signed installer or a package.
 //   3. Verify an Authenticode signature (WinVerifyTrust) before running it.

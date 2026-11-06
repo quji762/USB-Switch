@@ -23,6 +23,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $genDir = Join-Path $root 'build\generated'
 $outExe = Join-Path $root 'build\tests\unit.exe'
 $runtimeExe = Join-Path $root 'build\tests\device-runtime.exe'
+$trayExe = Join-Path $root 'build\tests\tray.exe'
 
 function Find-Tool {
     param([string]$Name, [string]$Directory)
@@ -65,6 +66,17 @@ Write-Host "built $outExe" -ForegroundColor Cyan
 & $outExe
 $code = $LASTEXITCODE
 Write-Host ''
+
+& $gxx -std=c++17 -O1 -g -Wall -Wextra `
+    -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE `
+    -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_CRT_SECURE_NO_WARNINGS `
+    ($includeDirs | ForEach-Object { "-I$_" }) `
+    -o $trayExe (Join-Path $root 'tests\tray.cpp') `
+    (Join-Path $root 'src\ui\TrayIcon.cpp') (Join-Path $root 'src\app\Logger.cpp') `
+    (Join-Path $root 'src\util\Str.cpp') -lshell32 -ladvapi32 -luser32
+if ($LASTEXITCODE -ne 0) { throw "tray test build failed ($LASTEXITCODE)" }
+& $trayExe
+if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
 
 # --- optional: device enumeration against the real machine -------------------
 if ($Runtime) {

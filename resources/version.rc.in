@@ -26,7 +26,7 @@ BEGIN
             VALUE "FileVersion",      "@QUICKEJECT_VERSION@\0"
             VALUE "InternalName",     "@QUICKEJECT_APP_NAME@\0"
             VALUE "LegalCopyright",   "@QUICKEJECT_COPYRIGHT@\0"
-            VALUE "OriginalFilename", "quickeject.exe\0"
+            VALUE "OriginalFilename", "usb-switch.exe\0"
             VALUE "ProductName",      "@QUICKEJECT_APP_NAME@\0"
             VALUE "ProductVersion",   "@QUICKEJECT_VERSION@\0"
         END
@@ -40,15 +40,17 @@ END
 /////////////////////////////////////////////////////////////////////////////
 // Icon
 //
-// Referenced by *name* ("QuickEjectIcon", see LoadImageW in MainWindow.cpp) so
+// Referenced by *name* ("USBSwitchIcon", see LoadImageW in MainWindow.cpp) so
 // the numeric ids in resources/resource.h stay private to the dialog
 // templates and can never drift out of sync.
 /////////////////////////////////////////////////////////////////////////////
 
-QuickEjectIcon ICON "@QUICKEJECT_ICON_PATH@"
+USBSwitchIcon ICON "@QUICKEJECT_ICON_PATH@"
 
 /////////////////////////////////////////////////////////////////////////////
 // Manifest (DPI awareness, Common-Controls 6, supported OS list)
 /////////////////////////////////////////////////////////////////////////////
 
+#ifndef QE_MSVC_MANIFEST
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "@QUICKEJECT_MANIFEST_PATH@"
+#endif

@@ -1,7 +1,7 @@
 #pragma once
 // Rotating single-file logger.
 //
-// The log lives in %LOCALAPPDATA%\QuickEject\logs\quickeject.log and is written
+// The log lives in %LOCALAPPDATA%\USB-Switch\logs\usb-switch.log and is written
 // as UTF-8. It is a diagnostic aid, not an audit trail: the previous file is
 // kept as .old once the current one passes 1 MiB, and nothing is flushed
 // synchronously (buffering is left to the CRT/OS).
@@ -24,7 +24,7 @@ public:
     static Logger& Instance();
 
     // Opens (creating if needed) <directory>\<baseName>.
-    void Init(const std::wstring& directory, std::wstring_view baseName = L"quickeject.log");
+    void Init(const std::wstring& directory, std::wstring_view baseName = L"usb-switch.log");
     void Shutdown();
 
     // Exactly one overload: two would be ambiguous for a plain literal

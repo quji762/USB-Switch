@@ -4,7 +4,7 @@
 // (used by the installer and by future localization builds).
 //
 // The application icon is *not* listed here: it is a named resource
-// ("QuickEjectIcon") declared in version.rc, so no id can drift.
+// ("USBSwitchIcon") declared in version.rc, so no id can drift.
 
 #define IDD_ABOUT                       201
 #define IDD_SETTINGS                    202

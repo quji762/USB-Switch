@@ -22,7 +22,7 @@ namespace {
 
 // Name of the icon resource declared in version.rc (a *named* resource, so it
 // cannot drift from resources/resource.h).
-constexpr wchar_t kIconResourceName[] = L"QuickEjectIcon";
+constexpr wchar_t kIconResourceName[] = L"USBSwitchIcon";
 
 // Tray callback message. kWakeMessage (WM_APP + 1) is reserved by
 // SingleInstance for "another instance started".
@@ -88,6 +88,7 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
         // find self == nullptr and silently fall through to DefWindowProcW,
         // leaving a window that does nothing. Aborting the creation is the
         // documented response.
+        SetLastError(ERROR_SUCCESS);
         if (SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self)) == 0 &&
             GetLastError() != ERROR_SUCCESS) {
             return FALSE;
@@ -103,8 +104,7 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_CREATE:
-            OnCreate(hwnd);
-            return 0;
+            return OnCreate(hwnd) ? 0 : -1;
         case WM_TIMER:
             OnRescanTimer();
             return 0;
@@ -133,6 +133,9 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         case WM_DESTROY:
             OnDestroy();
             return 0;
+        case WM_NCDESTROY:
+            hwnd_ = nullptr;
+            return DefWindowProcW(hwnd, message, wParam, lParam);
         default:
             break;
     }
@@ -148,7 +151,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
-void MainWindow::OnCreate(HWND hwnd) {
+bool MainWindow::OnCreate(HWND hwnd) {
     // The handle is valid from WM_CREATE onwards - store it before anything
     // else so the handlers below can use hwnd_.
     hwnd_ = hwnd;
@@ -160,9 +163,14 @@ void MainWindow::OnCreate(HWND hwnd) {
 
     if (!tray_.Create(hwnd_, kTrayMessage, icon_, i18n::I18n::Instance().Get(i18n::StrId::AppTooltip))) {
         QE_LOG_ERROR(L"could not create the tray icon");
+        trayCreationFailed_ = true;
+        if (icon_ != nullptr && ownsIcon_) DestroyIcon(icon_);
+        icon_ = nullptr;
+        return false;
     }
     notifier_.Register(hwnd_);
     RefreshDevices();
+    return true;
 }
 
 void MainWindow::OnDestroy() {
@@ -239,14 +247,18 @@ void MainWindow::RefreshDevices() {
     const bool notify = Settings::Instance().Data().showNotifications;
 
     const auto before = previousNames_;
-    devices_.Refresh();
+    if (!devices_.Refresh()) {
+        tray_.ShowBalloon(QUICKEJECT_APP_NAME_W, strings.Get(i18n::StrId::ErrorEnumFailed), NIIF_WARNING);
+        return;
+    }
 
     if (!firstScan_) {
         for (const auto& device : devices_.Devices()) {
             if (before.find(device.instanceId) == before.end()) {
                 QE_LOG_INFO(L"device connected: %ls", device.displayName.c_str());
                 if (notify) {
-                    tray_.ShowBalloon(strings.Format(i18n::StrId::DeviceInserted, device.displayName), L"");
+                    tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,
+                                      strings.Format(i18n::StrId::DeviceInserted, device.displayName));
                 }
             }
         }
@@ -254,7 +266,8 @@ void MainWindow::RefreshDevices() {
             if (!devices_.FindByInstanceId(entry.first)) {
                 QE_LOG_INFO(L"device disconnected: %ls", entry.second.c_str());
                 if (notify) {
-                    tray_.ShowBalloon(strings.Format(i18n::StrId::DeviceRemoved, entry.second), L"");
+                    tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,
+                                      strings.Format(i18n::StrId::DeviceRemoved, entry.second));
                 }
             }
         }
@@ -361,13 +374,10 @@ void MainWindow::EjectDevice(const Device& device) {
     const auto& strings = i18n::I18n::Instance();
     const AppSettings& settings = Settings::Instance().Data();
 
-    // Copy what we need up front. `device` points into DeviceManager::devices_,
-    // which RefreshDevices() replaces wholesale (devices_ = std::move(next)),
-    // freeing every old Device. The confirmation dialog below is modal and
-    // pumps messages, so a hot-plug event arriving while it is open starts the
-    // rescan timer and can rescan before the user answers - reading
-    // device.displayName or device.devInst after that is a use-after-free.
-    const DEVINST devInst = device.devInst;
+    // The modal confirmation pumps messages; the device can disappear while
+    // it is open. Resolve the copied instance ID again immediately before the
+    // eject request instead of relying on the cached device-node handle.
+    const std::wstring instanceId = device.instanceId;
     const std::wstring displayName = device.displayName;
 
     if (settings.confirmBeforeEject) {
@@ -379,7 +389,7 @@ void MainWindow::EjectDevice(const Device& device) {
     }
 
     QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
-    const EjectResult result = Ejector::Eject(devInst);
+    const EjectResult result = Ejector::Eject(instanceId);
     if (result.Succeeded()) {
         QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
         if (settings.showNotifications) {
@@ -399,17 +409,21 @@ void MainWindow::EjectDevice(const Device& device) {
 
 void MainWindow::OpenSettings() {
     if (Dialogs::ShowSettings(instance_, hwnd_) != IDOK) return;
-    ApplyRunAtStartup(Settings::Instance().Data().runAtStartup);
+    if (!ApplyRunAtStartup(Settings::Instance().Data().runAtStartup)) {
+        const auto& strings = i18n::I18n::Instance();
+        MessageBoxW(hwnd_, strings.Get(i18n::StrId::SettingsStartupFailed),
+                    strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONWARNING);
+    }
     RebuildTrayTip();
 }
 
 void MainWindow::OpenAbout() { Dialogs::ShowAbout(instance_, hwnd_); }
 
-void MainWindow::ApplyRunAtStartup(bool enabled) {
+bool MainWindow::ApplyRunAtStartup(bool enabled) {
     const std::wstring command = AutoStart::CommandLine();
     if (command.empty()) {
         QE_LOG_ERROR(L"cannot determine the executable path; run-at-startup not changed");
-        return;
+        return false;
     }
     const bool ok = enabled ? AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command)
                             : AutoStart::Clear(QUICKEJECT_APP_NAME_W);
@@ -417,6 +431,7 @@ void MainWindow::ApplyRunAtStartup(bool enabled) {
     // passing these narrow literals would be undefined behaviour.
     QE_LOG_INFO(L"run-at-startup %ls: %ls", enabled ? L"enabled" : L"disabled",
                 ok ? L"ok" : L"failed");
+    return ok;
 }
 
 void MainWindow::HandleSecondInstance() {

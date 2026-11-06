@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the QuickEject application icon (multi-resolution .ico).
+"""Generate the USB-Switch application icon (multi-resolution .ico).
 
 Run:  python tools/make_icon.py
-Out:  resources/quickeject.ico  (16/24/32/48/64/128/256 px)
+Out:  resources/usb-switch.ico  (16/24/32/48/64/128/256 px)
 
 The icon is drawn procedurally (no external assets): a rounded blue tile with
 a white "eject" glyph (triangle + bar), the classic symbol for safe removal.
@@ -69,7 +69,7 @@ def draw_icon() -> Image.Image:
 
 def main() -> int:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out = os.path.join(root, "resources", "quickeject.ico")
+    out = os.path.join(root, "resources", "usb-switch.ico")
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
     img = draw_icon()

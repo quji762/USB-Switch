@@ -12,7 +12,7 @@
 
 namespace qe {
 
-// %LOCALAPPDATA%\QuickEject\logs (falls back to the temp directory).
+// %LOCALAPPDATA%\USB-Switch\logs (falls back to the temp directory).
 std::wstring LogDirectory();
 
 enum class InitStatus {

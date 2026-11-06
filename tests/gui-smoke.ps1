@@ -1,0 +1,47 @@
+param([string]$Exe = (Join-Path $PSScriptRoot '..\dist\usb-switch.exe'))
+$ErrorActionPreference = 'Stop'
+$exePath = (Resolve-Path -LiteralPath $Exe).Path
+if (Get-Process usb-switch -ErrorAction SilentlyContinue) { throw 'USB-Switch is already running; GUI test skipped.' }
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class UsbSwitchGuiTest {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, ExactSpelling=true)]
+    public static extern IntPtr FindWindowW(string cls, string title);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")]
+    public static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr wp, IntPtr lp);
+}
+'@
+$savedAppData = $env:APPDATA
+$savedLocalAppData = $env:LOCALAPPDATA
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('usb-switch-gui-test-' + [guid]::NewGuid())
+$process = $null
+$second = $null
+try {
+    $env:APPDATA = Join-Path $testRoot 'roaming'
+    $env:LOCALAPPDATA = Join-Path $testRoot 'local'
+    $process = Start-Process -FilePath $exePath -PassThru
+    $window = [IntPtr]::Zero
+    for ($i = 0; $i -lt 100; $i++) {
+        $window = [UsbSwitchGuiTest]::FindWindowW('USBSwitchTrayWindow', 'USB-Switch')
+        if ($window -ne [IntPtr]::Zero -or $process.HasExited) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if ($window -eq [IntPtr]::Zero) { throw 'Tray window did not appear' }
+    [uint32]$owner = 0
+    [void][UsbSwitchGuiTest]::GetWindowThreadProcessId($window, [ref]$owner)
+    if ($owner -ne $process.Id) { throw 'Tray window belongs to another process' }
+    $second = Start-Process -FilePath $exePath -PassThru
+    if (!$second.WaitForExit(10000) -or $second.ExitCode -ne 0 -or $process.HasExited) { throw 'Second-instance handling failed' }
+    if (![UsbSwitchGuiTest]::PostMessageW($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)) { throw 'Could not request window close' }
+    if (!$process.WaitForExit(10000) -or $process.ExitCode -ne 0) { throw 'Application did not exit cleanly' }
+    Write-Host 'GUI startup, single-instance handling and graceful shutdown passed'
+} finally {
+    $env:APPDATA = $savedAppData
+    $env:LOCALAPPDATA = $savedLocalAppData
+    if ($second -and !$second.HasExited) { Stop-Process -Id $second.Id -Force }
+    if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force }
+    if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }
+}

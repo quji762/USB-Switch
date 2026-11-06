@@ -146,12 +146,12 @@ const wchar_t* BusTypeName(BusType busType) {
     return L"?";
 }
 
-void DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
-    DevInfoSet info(SetupDiGetClassDevsW(&GUID_DEVINTERFACE_DISK, nullptr, nullptr,
+bool DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
+    DevInfoSet info(api_.getClassDevs(&GUID_DEVINTERFACE_DISK, nullptr, nullptr,
                                          DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
     if (!info) {
         QE_LOG_ERROR(L"SetupDiGetClassDevs(GUID_DEVINTERFACE_DISK) failed: %lu", GetLastError());
-        return;
+        return false;
     }
 
     for (DWORD index = 0;; ++index) {
@@ -159,10 +159,10 @@ void DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
         interfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
         if (!SetupDiEnumDeviceInterfaces(info.Get(), nullptr, &GUID_DEVINTERFACE_DISK, index,
                                          &interfaceData)) {
-            if (GetLastError() != ERROR_NO_MORE_ITEMS) {
-                QE_LOG_WARN(L"SetupDiEnumDeviceInterfaces failed: %lu", GetLastError());
-            }
-            break;
+            const DWORD error = GetLastError();
+            if (error == ERROR_NO_MORE_ITEMS) break;
+            QE_LOG_WARN(L"SetupDiEnumDeviceInterfaces failed: %lu", error);
+            return false;
         }
 
         DWORD detailSize = 0;
@@ -218,16 +218,17 @@ void DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
 
         disks.push_back(std::move(disk));
     }
+    return true;
 }
 
-void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
+bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
     WCHAR volumeName[MAX_PATH];
     // FindFirstVolume's handle must be closed with FindVolumeClose, so it is
     // deliberately not wrapped in the kernel-handle RAII type.
-    HANDLE find = FindFirstVolumeW(volumeName, static_cast<DWORD>(std::size(volumeName)));
+    HANDLE find = api_.findFirstVolume(volumeName, static_cast<DWORD>(std::size(volumeName)));
     if (find == INVALID_HANDLE_VALUE) {
         QE_LOG_WARN(L"FindFirstVolume failed: %lu", GetLastError());
-        return;
+        return false;
     }
 
     do {
@@ -242,7 +243,7 @@ void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
         for (const WCHAR* mount = mountPoints.data(); *mount != L'\0';
              mount += std::wcslen(mount) + 1) {
             std::wstring path(mount);
-            if (path.size() < 2 || path[1] != L':') continue;  // drive letters only
+            if (!str::IsDriveLetterMount(path)) continue;  // exclude directory mount points
 
             UINT driveType = GetDriveTypeW(path.c_str());
             if (driveType != DRIVE_REMOVABLE && driveType != DRIVE_FIXED) continue;
@@ -288,14 +289,19 @@ void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
                 break;  // one volume belongs to at most one disk candidate
             }
         }
-    } while (FindNextVolumeW(find, volumeName, static_cast<DWORD>(std::size(volumeName))));
+    } while (api_.findNextVolume(find, volumeName, static_cast<DWORD>(std::size(volumeName))));
+    const DWORD lastError = GetLastError();
     FindVolumeClose(find);
+    if (lastError != ERROR_NO_MORE_FILES) {
+        QE_LOG_WARN(L"FindNextVolume failed: %lu", lastError);
+        return false;
+    }
+    return true;
 }
 
-void DeviceManager::Refresh() {
+bool DeviceManager::Refresh() {
     std::vector<DiskCandidate> disks;
-    CollectDiskInterfaces(disks);
-    AttachVolumes(disks);
+    if (!CollectDiskInterfaces(disks) || !AttachVolumes(disks)) return false;
 
     DeviceList next;
     next.reserve(disks.size());
@@ -322,7 +328,7 @@ void DeviceManager::Refresh() {
         device.devInst = disk.devInst;
         device.deviceNumber = disk.deviceNumber;
         device.busType = busType;
-        device.removable = disk.removableMedia || isUsb;
+        device.removable = disk.removableMedia || disk.volumeIsRemovable || isUsb;
         device.volumeLabel = disk.volumeLabel;
         device.driveLetters = disk.driveLetters;
         device.sizeBytes = disk.sizeBytes;
@@ -335,6 +341,7 @@ void DeviceManager::Refresh() {
     devices_ = std::move(next);
     QE_LOG_DEBUG(L"device scan complete: %zu removable device(s)", devices_.size());
     if (callback_) callback_();
+    return true;
 }
 
 std::vector<Device> DeviceManager::Devices() const { return devices_; }

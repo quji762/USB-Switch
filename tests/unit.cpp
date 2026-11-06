@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "util/Json.h"
+#include "util/Str.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 
@@ -151,7 +152,7 @@ static void TestI18n() {
     // Placeholders that do not exist in the template stay untouched.
     const std::wstring plain =
         qe::i18n::I18n::Instance().Format(qe::i18n::StrId::CliVersion, L"X", L"Y", L"Z");
-    Check(plain.find(L"quickeject 1.0.0") != std::wstring::npos, "template without placeholders");
+    Check(plain.find(L"usb-switch 1.0.0") != std::wstring::npos, "template without placeholders");
     Check(plain.find(L'X') == std::wstring::npos, "unused argument is not appended");
 
     // A lone % or an unknown placeholder is left alone.
@@ -170,6 +171,11 @@ static void TestI18n() {
 int main() {
     TestJson();
     TestI18n();
+    Check(qe::str::IsDriveLetterMount(L"E:\\"), "drive root is a drive-letter mount");
+    Check(qe::str::IsDriveLetterMount(L"e:\\"), "lowercase drive root is accepted");
+    Check(!qe::str::IsDriveLetterMount(L"C:\\mnt\\usb\\"), "directory mount is not its host drive");
+    Check(!qe::str::IsDriveLetterMount(L"\\\\?\\Volume{123}\\"), "volume GUID is not a drive letter");
+    Check(!qe::str::IsDriveLetterMount(L"1:\\"), "invalid drive letter is rejected");
     printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

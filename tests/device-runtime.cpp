@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "app/Logger.h"
+#include "app/AutoStart.h"
 #include "app/Settings.h"
 #include "core/Device.h"
 #include "core/DeviceManager.h"
@@ -18,6 +19,22 @@
 
 static int g_failures = 0;
 static int g_checks = 0;
+
+enum class Fault { None, ClassDevs, FirstVolume, NextVolume };
+static Fault fault = Fault::None;
+
+static HDEVINFO WINAPI TestGetClassDevs(const GUID* guid, PCWSTR enumerator, HWND parent, DWORD flags) {
+    if (fault == Fault::ClassDevs) { SetLastError(ERROR_ACCESS_DENIED); return INVALID_HANDLE_VALUE; }
+    return SetupDiGetClassDevsW(guid, enumerator, parent, flags);
+}
+static HANDLE WINAPI TestFindFirstVolume(LPWSTR volume, DWORD length) {
+    if (fault == Fault::FirstVolume) { SetLastError(ERROR_ACCESS_DENIED); return INVALID_HANDLE_VALUE; }
+    return FindFirstVolumeW(volume, length);
+}
+static BOOL WINAPI TestFindNextVolume(HANDLE handle, LPWSTR volume, DWORD length) {
+    if (fault == Fault::NextVolume) { SetLastError(ERROR_ACCESS_DENIED); return FALSE; }
+    return FindNextVolumeW(handle, volume, length);
+}
 
 static void Check(bool condition, const char* what) {
     ++g_checks;
@@ -49,7 +66,7 @@ int main() {
     qe::i18n::I18n::Instance().Init(L"en");
 
     qe::DeviceManager manager;
-    manager.Refresh();
+    Check(manager.Refresh(), "device enumeration succeeds");
     const qe::DeviceList& devices = manager.Devices();
 
     wchar_t line[512];
@@ -81,17 +98,57 @@ int main() {
         Check(found.has_value() && found->instanceId == device.instanceId,
               "FindByDriveLetter finds the device it was listed under");
     }
-    Check(!manager.FindByDriveLetter(L"Z:"), "FindByDriveLetter(Z:) is empty on this machine");
+    Check(!manager.FindByDriveLetter(L"?:"), "an invalid drive letter does not match a device");
 
     // A repeated scan must be stable (no duplicates, no leaks in the vectors).
     const size_t firstCount = devices.size();
-    manager.Refresh();
+    Check(manager.Refresh(), "second enumeration succeeds");
     Check(manager.Devices().size() == firstCount, "a second scan reports the same count");
 
+    qe::DeviceManager::EnumerationApi api;
+    api.getClassDevs = TestGetClassDevs;
+    api.findFirstVolume = TestFindFirstVolume;
+    api.findNextVolume = TestFindNextVolume;
+    qe::DeviceManager faultManager(api);
+    int callbacks = 0;
+    faultManager.SetChangeCallback([&callbacks]() { ++callbacks; });
+    Check(faultManager.Refresh(), "baseline enumeration for fault tests succeeds");
+    const auto baseline = faultManager.Devices();
+    for (const auto mode : {Fault::ClassDevs, Fault::FirstVolume, Fault::NextVolume}) {
+        fault = mode;
+        Check(!faultManager.Refresh(), "system enumeration error is reported");
+        const auto after = faultManager.Devices();
+        bool same = after.size() == baseline.size();
+        for (size_t i = 0; same && i < baseline.size(); ++i) {
+            same = after[i].instanceId == baseline[i].instanceId &&
+                   after[i].displayName == baseline[i].displayName &&
+                   after[i].driveLetters == baseline[i].driveLetters;
+        }
+        Check(same, "failed enumeration retains previous snapshot");
+        Check(callbacks == 1, "failed enumeration does not send a change callback");
+    }
+    fault = Fault::None;
+    Check(faultManager.Refresh() && callbacks == 2, "enumeration recovers after a transient error");
+
     // Ejector must refuse a bogus instance rather than misbehave.
-    const qe::EjectResult bogus = qe::Ejector::Eject(0);
-    Check(!bogus.Succeeded(), "ejecting devInst 0 fails cleanly");
+    const qe::EjectResult bogus = qe::Ejector::Eject(L"USB-Switch\\NONEXISTENT\\TEST");
+    Check(!bogus.Succeeded(), "ejecting a nonexistent instance fails cleanly");
     Check(!qe::Ejector::Describe(bogus).empty(), "a failed eject has an explanation");
+
+    const std::wstring testRunName = L"USB-Switch-test-" + std::to_wstring(GetCurrentProcessId());
+    if (qe::AutoStart::IsEnabled(testRunName)) {
+        Check(false, "temporary startup entry name is unused");
+    } else {
+        const bool created = qe::AutoStart::SetEnabled(testRunName, L"\"C:\\test-owned.exe\"");
+        Check(created, "temporary startup entry created");
+        if (created) {
+            Check(qe::AutoStart::ClearIfMatches(testRunName, L"\"C:\\different.exe\"") &&
+                  qe::AutoStart::IsEnabled(testRunName), "mismatched startup entry is preserved");
+            Check(qe::AutoStart::ClearIfMatches(testRunName, L"\"C:\\TEST-OWNED.exe\"") &&
+                  !qe::AutoStart::IsEnabled(testRunName), "matching startup entry is removed");
+            qe::AutoStart::Clear(testRunName);
+        }
+    }
 
     printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

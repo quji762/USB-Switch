@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <iterator>
+#include <vector>
 
 #include "app/Logger.h"
 #include "util/Str.h"
@@ -75,6 +76,27 @@ bool AutoStart::Clear(std::wstring_view valueName) {
         return false;
     }
     return true;
+}
+
+bool AutoStart::ClearIfMatches(std::wstring_view valueName, std::wstring_view expected) {
+    HKEY key = OpenRunKey(KEY_QUERY_VALUE | KEY_SET_VALUE, /*createIfMissing=*/false);
+    if (key == nullptr) return false;
+    const std::wstring name(valueName);
+    DWORD type = 0, bytes = 0;
+    LONG result = RegQueryValueExW(key, name.c_str(), nullptr, &type, nullptr, &bytes);
+    if (result == ERROR_FILE_NOT_FOUND) { RegCloseKey(key); return true; }
+    if (result != ERROR_SUCCESS || type != REG_SZ || bytes > 32768 || bytes % sizeof(wchar_t) != 0) {
+        RegCloseKey(key);
+        return false;
+    }
+    std::vector<wchar_t> value(bytes / sizeof(wchar_t) + 1, L'\0');
+    result = RegQueryValueExW(key, name.c_str(), nullptr, &type,
+                              reinterpret_cast<BYTE*>(value.data()), &bytes);
+    if (result == ERROR_SUCCESS && type == REG_SZ && str::EqualsI(value.data(), expected)) {
+        result = RegDeleteValueW(key, name.c_str());
+    }
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND;
 }
 
 }  // namespace qe

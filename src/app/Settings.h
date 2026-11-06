@@ -1,5 +1,5 @@
 #pragma once
-// Persistent user settings, stored as JSON in %APPDATA%\QuickEject\settings.json.
+// Persistent user settings, stored as JSON in %APPDATA%\USB-Switch\settings.json.
 //
 // Every field has a default so a missing or corrupt file simply yields
 // defaults (and the file is rewritten on the next change) - the app never
@@ -32,7 +32,7 @@ public:
     AppSettings& Data() noexcept { return data_; }
     const AppSettings& Data() const noexcept { return data_; }
 
-    // %APPDATA%\QuickEject (created on demand).
+    // %APPDATA%\USB-Switch (created on demand).
     static std::wstring AppDataDirectory();
     static std::wstring FilePath();
 

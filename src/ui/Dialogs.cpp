@@ -88,6 +88,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             if (commandId != IDOK) break;
 
             AppSettings& settings = Settings::Instance().Data();
+            const AppSettings previous = settings;
             settings.runAtStartup = IsDlgButtonChecked(hwnd, IDC_SET_STARTUP) == BST_CHECKED;
             settings.showNotifications = IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED;
             settings.confirmBeforeEject = IsDlgButtonChecked(hwnd, IDC_SET_CONFIRM) == BST_CHECKED;
@@ -100,7 +101,11 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             }
 
             if (!Settings::Instance().Save()) {
-                QE_LOG_WARN(L"settings could not be written; changes are kept for this session only");
+                settings = previous;
+                const auto& strings = i18n::I18n::Instance();
+                MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsSaveFailed),
+                            strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONERROR);
+                return TRUE;
             }
             i18n::I18n::Instance().SetLanguage(settings.language);
             EndDialog(hwnd, IDOK);

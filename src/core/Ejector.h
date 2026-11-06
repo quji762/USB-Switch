@@ -31,8 +31,9 @@ struct EjectResult {
 
 class Ejector {
 public:
-    // Sends the eject request for the device instance behind `devInst`.
-    static EjectResult Eject(DEVINST devInst);
+    // Resolve the stable instance ID immediately before the request. A cached
+    // DEVINST can go stale while a confirmation dialog is open.
+    static EjectResult Eject(const std::wstring& instanceId);
 
     // Localized explanation of a non-successful result.
     static std::wstring Describe(const EjectResult& result);

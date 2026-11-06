@@ -17,9 +17,9 @@ struct Entry {
 // directly and a static_assert guards the size.
 const Entry kStrings[] = {
     // App identity / tray
-    {StrId::AppTooltip, L"QuickEject — USB 安全弹出", L"QuickEject — USB Safe Remove"},
-    {StrId::TrayHintRunning, L"QuickEject 已在运行，请使用托盘图标。",
-     L"QuickEject is already running; use the tray icon."},
+    {StrId::AppTooltip, L"USB-Switch — USB 安全弹出", L"USB-Switch — USB Safe Remove"},
+    {StrId::TrayHintRunning, L"USB-Switch 已在运行，请使用托盘图标。",
+     L"USB-Switch is already running; use the tray icon."},
 
     // Tray menu
     {StrId::MenuDevices, L"可移动设备(%1)", L"Removable devices (%1)"},
@@ -27,7 +27,7 @@ const Entry kStrings[] = {
     {StrId::MenuEjectItem, L"%1 — 点击安全弹出", L"%1 — click to safely remove"},
     {StrId::MenuRefresh, L"刷新设备列表", L"Refresh device list"},
     {StrId::MenuSettings, L"设置…", L"Settings…"},
-    {StrId::MenuAbout, L"关于 QuickEject", L"About QuickEject"},
+    {StrId::MenuAbout, L"关于 USB-Switch", L"About USB-Switch"},
     {StrId::MenuExit, L"退出", L"Exit"},
 
     // Eject flow
@@ -69,8 +69,8 @@ const Entry kStrings[] = {
      L"The device is marked as non-disableable, so it cannot be safely removed."},
     {StrId::VetoLegacyDriver, L"有旧版驱动程序正在占用该设备。可在设备管理器中卸载对应设备后重试。",
      L"A legacy driver is using the device. Uninstall the device in Device Manager and try again."},
-    {StrId::VetoInsufficientRights, L"权限不足，系统拒绝了移除请求。请以管理员身份运行 QuickEject 后重试。",
-     L"Insufficient rights: the system refused the removal. Run QuickEject as administrator and try again."},
+    {StrId::VetoInsufficientRights, L"权限不足，系统拒绝了移除请求。请以管理员身份运行 USB-Switch 后重试。",
+     L"Insufficient rights: the system refused the removal. Run USB-Switch as administrator and try again."},
     {StrId::VetoAlreadyRemoved, L"该设备已经被移除或已断开连接，无需再次弹出。",
      L"The device has already been removed or disconnected; no further action is needed."},
     // The text PnP supplies alongside a veto is an application, service or
@@ -81,7 +81,7 @@ const Entry kStrings[] = {
     {StrId::VetoDevicePathSuffix, L"（相关设备：%1）", L"(related device: %1)"},
 
     // Settings dialog
-    {StrId::SettingsTitle, L"QuickEject 设置", L"QuickEject Settings"},
+    {StrId::SettingsTitle, L"USB-Switch 设置", L"USB-Switch Settings"},
     {StrId::SettingsStartup, L"登录 Windows 时自动运行", L"Run when I sign in to Windows"},
     {StrId::SettingsNotify, L"显示设备插入 / 拔出通知", L"Show device connect / disconnect notifications"},
     {StrId::SettingsConfirm, L"弹出前显示确认对话框", L"Ask for confirmation before removing"},
@@ -91,14 +91,18 @@ const Entry kStrings[] = {
     {StrId::SettingsLanguageEn, L"English", L"English"},
     {StrId::SettingsNote, L"语言更改即时生效；本对话框的文字将在下次打开时更新。",
      L"Language changes apply immediately; this dialog updates next time you open it."},
+    {StrId::SettingsSaveFailed, L"无法保存设置。请检查用户配置目录是否可写，然后重试。",
+     L"Settings could not be saved. Check that your user configuration directory is writable and try again."},
+    {StrId::SettingsStartupFailed, L"无法更新 Windows 开机启动项。请检查当前用户的注册表权限。",
+     L"Could not update the Windows startup entry. Check your user registry permissions."},
     // The .rc templates hardcode English for these; INITDIALOG overwrites them.
     {StrId::DialogOk, L"确定", L"OK"},
     {StrId::DialogCancel, L"取消", L"Cancel"},
 
     // About dialog
-    {StrId::AboutTitle, L"关于 QuickEject", L"About QuickEject"},
-    {StrId::AboutAppName, L"QuickEject " QUICKEJECT_VERSION_STRING_W,
-     L"QuickEject " QUICKEJECT_VERSION_STRING_W},
+    {StrId::AboutTitle, L"关于 USB-Switch", L"About USB-Switch"},
+    {StrId::AboutAppName, L"USB-Switch " QUICKEJECT_VERSION_STRING_W,
+     L"USB-Switch " QUICKEJECT_VERSION_STRING_W},
     {StrId::AboutDescription,
      L"一个轻量的 USB 安全弹出工具：快速枚举可移动设备、一键安全弹出、托盘常驻。\n\n"
      L"本软件按“原样”提供，不对数据丢失承担责任。拔出设备前请确认数据已保存。",
@@ -108,33 +112,35 @@ const Entry kStrings[] = {
 
     // Command line
     {StrId::CliUsage,
-     L"用法: quickeject [选项]\n"
+     L"用法: usb-switch [选项]\n"
      L"  --list            列出可移动设备后退出\n"
      L"  --eject <盘符>    安全弹出指定设备(如 --eject E:)\n"
      L"  --version         显示版本\n"
      L"  --help            显示本帮助\n"
      L"无参数时启动托盘程序。",
-     L"Usage: quickeject [options]\n"
+     L"Usage: usb-switch [options]\n"
      L"  --list            list removable devices and exit\n"
      L"  --eject <drive>   safely remove a device (e.g. --eject E:)\n"
      L"  --version         print version\n"
      L"  --help            show this help\n"
      L"Without options the tray application starts."},
-    {StrId::CliListTitle, L"QuickEject " QUICKEJECT_VERSION_STRING_W L" — 可移动设备",
-     L"QuickEject " QUICKEJECT_VERSION_STRING_W L" — removable devices"},
+    {StrId::CliListTitle, L"USB-Switch " QUICKEJECT_VERSION_STRING_W L" — 可移动设备",
+     L"USB-Switch " QUICKEJECT_VERSION_STRING_W L" — removable devices"},
     {StrId::CliNoDevices, L"未发现可移动设备。", L"No removable devices found."},
     {StrId::CliEjectOk, L"已安全弹出：%1", L"Safely removed: %1"},
     {StrId::CliEjectFailed, L"弹出失败：%1（%2）", L"Removal failed: %1 (%2)"},
     {StrId::CliUnknownDevice, L"找不到匹配的设备：%1", L"No device matches: %1"},
-    {StrId::CliVersion, L"quickeject " QUICKEJECT_VERSION_STRING_W L" (Windows)",
-     L"quickeject " QUICKEJECT_VERSION_STRING_W L" (Windows)"},
+    {StrId::CliVersion, L"usb-switch " QUICKEJECT_VERSION_STRING_W L" (Windows)",
+     L"usb-switch " QUICKEJECT_VERSION_STRING_W L" (Windows)"},
 
     // Errors
     {StrId::ErrorGeneric, L"发生错误：%1", L"An error occurred: %1"},
     {StrId::ErrorEnumFailed, L"无法枚举系统设备，可能是系统组件损坏或权限不足。",
      L"Could not enumerate system devices; system components may be damaged or permissions are insufficient."},
-    {StrId::ErrorWindowCreation, L"无法创建程序窗口，QuickEject 无法启动。",
-     L"Could not create the application window; QuickEject cannot start."},
+    {StrId::ErrorWindowCreation, L"无法创建程序窗口，USB-Switch 无法启动。",
+     L"Could not create the application window; USB-Switch cannot start."},
+    {StrId::ErrorTrayCreation, L"无法创建系统托盘图标，USB-Switch 无法启动。请确认 Windows 资源管理器正在运行。",
+     L"Could not create the system tray icon; USB-Switch cannot start. Check that Windows Explorer is running."},
     {StrId::ErrorConsoleAttach, L"无法连接到父进程的控制台，命令行输出不可用。",
      L"Could not attach to the parent console; command line output is unavailable."},
 };

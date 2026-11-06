@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds QuickEject and collects the release artifacts in dist\.
+    Builds USB-Switch and collects the release artifacts in dist\.
 
 .DESCRIPTION
     Detects the available toolchain in this order:
@@ -61,19 +61,22 @@ $ninja = Get-Command ninja -ErrorAction SilentlyContinue
 
 if ($vcvars) {
     Write-Host "toolchain: MSVC via $vcvars" -ForegroundColor Green
+    $generator = if ($ninja) { 'Ninja' } else { 'NMake Makefiles' }
     # Note the quotes around -DCMAKE_BUILD_TYPE=... : without them the
     # variable is not expanded when the command line is built up as a string.
-    $command = "`"$vcvars`" >nul && " +
-               "`"$cmake`" -S `"$root`" -B `"$build`" -A x64 `"-DCMAKE_BUILD_TYPE=$Config`" && " +
-               "`"$cmake`" --build `"$build`" --config `"$Config`""
+    $command = "set VSLANG=1033 && `"$vcvars`" >nul && " +
+               "`"$cmake`" -S `"$root`" -B `"$build`" -G `"$generator`" `"-DCMAKE_BUILD_TYPE=$Config`" && " +
+               "`"$cmake`" --build `"$build`" --config `"$Config`" --clean-first"
     cmd /c $command
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 elseif ($cl) {
     Write-Host 'toolchain: MSVC (cl.exe on PATH)' -ForegroundColor Green
-    & $cmake -S $root -B $build -A x64 "-DCMAKE_BUILD_TYPE=$Config"
+    $env:VSLANG = '1033'
+    $generator = if ($ninja) { 'Ninja' } else { 'NMake Makefiles' }
+    & $cmake -S $root -B $build -G $generator "-DCMAKE_BUILD_TYPE=$Config"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $cmake --build $build --config $Config
+    & $cmake --build $build --config $Config --clean-first
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 elseif ($gcc) {
@@ -91,21 +94,21 @@ else {
     exit 1
 }
 
-$exe = Get-ChildItem -Path $build -Filter 'quickeject.exe' -Recurse -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+$exePath = Join-Path $build 'usb-switch.exe'
+$exe = Get-Item -LiteralPath $exePath -ErrorAction SilentlyContinue
 if (-not $exe) {
-    Write-Host 'build finished but quickeject.exe was not found' -ForegroundColor Red
+    Write-Host 'build finished but usb-switch.exe was not found' -ForegroundColor Red
     exit 1
 }
 
-if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
-New-Item -ItemType Directory -Path $dist | Out-Null
-Copy-Item $exe.FullName (Join-Path $dist 'quickeject.exe')
-Copy-Item (Join-Path $root 'README.md') (Join-Path $dist 'README.md')
+New-Item -ItemType Directory -Force -Path $dist | Out-Null
+Copy-Item $exe.FullName (Join-Path $dist 'usb-switch.exe') -Force
+Copy-Item (Join-Path $root 'README.md') (Join-Path $dist 'README.md') -Force
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $dist 'LICENSE') -Force
 
 Write-Host ''
-Write-Host "built $($exe.LastWriteTime): $dist\quickeject.exe" -ForegroundColor Cyan
-Write-Host 'smoke test:  .\dist\quickeject.exe --list'
-Write-Host 'run:         .\dist\quickeject.exe'
-Write-Host 'installer:   iscc installer\quickeject.iss   (needs Inno Setup)'
+Write-Host "built $($exe.LastWriteTime): $dist\usb-switch.exe" -ForegroundColor Cyan
+Write-Host 'smoke test:  .\dist\usb-switch.exe --list'
+Write-Host 'run:         .\dist\usb-switch.exe'
+Write-Host 'installer:   iscc installer\usb-switch.iss   (needs Inno Setup)'
 exit 0

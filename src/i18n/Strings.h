@@ -65,6 +65,8 @@ enum class StrId {
     SettingsLanguageZh,
     SettingsLanguageEn,
     SettingsNote,
+    SettingsSaveFailed,
+    SettingsStartupFailed,
 
     // Dialog buttons (set at runtime; the .rc templates keep English defaults)
     DialogOk,
@@ -89,6 +91,7 @@ enum class StrId {
     ErrorGeneric,
     ErrorEnumFailed,
     ErrorWindowCreation,
+    ErrorTrayCreation,
     ErrorConsoleAttach,
 
     kCount

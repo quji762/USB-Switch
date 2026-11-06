@@ -16,7 +16,7 @@ namespace qe {
 class MainWindow {
 public:
     // Unique window class name; also how a second instance finds this window.
-    static constexpr wchar_t kClassName[] = L"QuickEjectTrayWindow";
+    static constexpr wchar_t kClassName[] = L"USBSwitchTrayWindow";
 
     explicit MainWindow(HINSTANCE instance);
     ~MainWindow();
@@ -30,9 +30,10 @@ public:
     void Destroy() noexcept;
 
     HWND Handle() const noexcept { return hwnd_; }
+    bool TrayCreationFailed() const noexcept { return trayCreationFailed_; }
 
     // Registers or clears the "run at sign-in" entry for the current binary.
-    void ApplyRunAtStartup(bool enabled);
+    bool ApplyRunAtStartup(bool enabled);
 
     // Called when a second instance starts: show a hint instead of a window.
     void HandleSecondInstance();
@@ -44,7 +45,7 @@ private:
     // be called with it.
     LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-    void OnCreate(HWND hwnd);
+    bool OnCreate(HWND hwnd);
     void OnDestroy();
     void OnTrayNotify(LPARAM lParam);
     void OnDeviceChange(UINT event, LPARAM data);
@@ -76,6 +77,7 @@ private:
     std::unordered_map<UINT, std::wstring> menuCommands_;
     // Suppresses connect/disconnect balloons for the initial scan at startup.
     bool firstScan_ = true;
+    bool trayCreationFailed_ = false;
     // True while icon_ came from LoadImage and must be destroyed.
     mutable bool ownsIcon_ = true;
 };

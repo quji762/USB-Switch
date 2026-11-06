@@ -16,6 +16,8 @@ namespace qe {
 class TrayIcon {
 public:
     static constexpr UINT kIconId = 1;
+    using NotifyFn = BOOL (WINAPI *)(DWORD, PNOTIFYICONDATAW);
+    explicit TrayIcon(NotifyFn notify = Shell_NotifyIconW) : notify_(notify) {}
 
     bool Create(HWND hwnd, UINT callbackMessage, HICON icon, std::wstring_view tooltip);
     void UpdateIcon(HICON icon);
@@ -33,6 +35,7 @@ private:
     void CopyToBalloonText(std::wstring_view text);
 
     NOTIFYICONDATAW data_{};
+    NotifyFn notify_;
     bool created_ = false;
 };
 

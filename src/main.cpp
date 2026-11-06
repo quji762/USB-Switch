@@ -53,7 +53,8 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
         } else if (isEject) {
             if (argument.rfind(L"--eject=", 0) == 0) {
                 options.ejectTarget = argument.substr(8);
-            } else if (i + 1 < argc) {
+                if (options.ejectTarget.empty()) options.usageError = true;
+            } else if (i + 1 < argc && argv[i + 1][0] != L'-') {
                 options.ejectTarget = argv[++i];
             } else {
                 options.usageError = true;  // missing argument
@@ -123,8 +124,7 @@ void PrintLine(const std::wstring& text) {
 std::wstring NormalizeDriveLetter(std::wstring_view input) {
     std::wstring text = str::Trim(input);
     if (text.size() == 1) text += L':';
-    if (text.size() < 2 || text[1] != L':') return {};
-    text.resize(2);
+    if (text.size() != 2 || text[1] != L':') return {};
     if (text[0] >= L'a' && text[0] <= L'z') text[0] = static_cast<wchar_t>(text[0] - L'a' + L'A');
     if (!((text[0] >= L'A' && text[0] <= L'Z'))) return {};
     return text;
@@ -133,7 +133,10 @@ std::wstring NormalizeDriveLetter(std::wstring_view input) {
 int RunListDevices() {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
-    manager.Refresh();
+    if (!manager.Refresh()) {
+        PrintLine(strings.Get(i18n::StrId::ErrorEnumFailed));
+        return 1;
+    }
     const std::vector<Device> devices = manager.Devices();
 
     PrintLine(strings.Get(i18n::StrId::CliListTitle));
@@ -163,7 +166,10 @@ int RunListDevices() {
 int RunEject(const std::wstring& target) {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
-    manager.Refresh();
+    if (!manager.Refresh()) {
+        PrintLine(strings.Get(i18n::StrId::ErrorEnumFailed));
+        return 1;
+    }
 
     std::optional<Device> device;
     const std::wstring drive = NormalizeDriveLetter(target);
@@ -177,7 +183,7 @@ int RunEject(const std::wstring& target) {
         return 2;
     }
 
-    const EjectResult result = Ejector::Eject(device->devInst);
+    const EjectResult result = Ejector::Eject(device->instanceId);
     if (result.Succeeded()) {
         PrintLine(strings.Format(i18n::StrId::CliEjectOk, device->displayName));
         return 0;

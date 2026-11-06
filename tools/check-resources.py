@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the resources embedded in quickeject.exe.
+"""Verify the resources embedded in usb-switch.exe.
 
 Checks that the resource compiler produced what the product needs:
 RT_GROUP_ICON + RT_ICON (tray icon), RT_VERSION (file properties) and
@@ -164,8 +164,8 @@ def main() -> int:
     # Version strings sanity check.
     for _name, offset, size in resources.get(RT_VERSION, []):
         values = read_version_strings(data, offset, size)
-        for key, expected in (("CompanyName", "QuickEject Project"),
-                              ("ProductName", "QuickEject"),
+        for key, expected in (("CompanyName", "USB-Switch Project"),
+                              ("ProductName", "USB-Switch"),
                               ("FileVersion", "1.0.0")):
             if values.get(key) != expected:
                 problems.append(f"version resource: {key} is {values.get(key)!r}, expected {expected!r}")

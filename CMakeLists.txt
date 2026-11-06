@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(quickeject
+project(usb-switch
     VERSION 1.0.0
-    DESCRIPTION "QuickEject - USB safe removal tray tool"
+    DESCRIPTION "USB-Switch - USB safe removal tray tool"
     LANGUAGES CXX RC)
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ string(REGEX MATCH "#define QUICKEJECT_COPYRIGHT[ \t]+\"([^\"]*)\"" _unused
 set(QUICKEJECT_COPYRIGHT "${CMAKE_MATCH_1}")
 
 set(QUICKEJECT_VERSION "${PROJECT_VERSION}")
-set(QUICKEJECT_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/quickeject.ico")
+set(QUICKEJECT_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/usb-switch.ico")
 set(QUICKEJECT_MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.manifest")
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ set(QUICKEJECT_SOURCES
     src/util/Str.cpp
 )
 
-add_executable(quickeject WIN32 ${QUICKEJECT_SOURCES})
+add_executable(usb-switch WIN32 ${QUICKEJECT_SOURCES})
 
 # The resource scripts live in their own target on purpose. They need none of
 # the include directories the C++ sources use (quoted includes such as
@@ -96,18 +96,18 @@ add_executable(quickeject WIN32 ${QUICKEJECT_SOURCES})
 # remainder to cc1.exe as an input file, which fails the whole build when the
 # project sits in a directory like "E:\Downloads\USB Switch". Keeping them out
 # of the main target's include directories sidesteps that entirely.
-add_library(quickeject_resources OBJECT
+add_library(usb-switch_resources OBJECT
     ${CMAKE_CURRENT_BINARY_DIR}/generated/version.rc
     resources/dialogs.rc)
 
-target_link_libraries(quickeject PRIVATE quickeject_resources)
+target_link_libraries(usb-switch PRIVATE usb-switch_resources)
 
-target_include_directories(quickeject PRIVATE
+target_include_directories(usb-switch PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/resources
     ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-target_compile_definitions(quickeject PRIVATE
+target_compile_definitions(usb-switch PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     UNICODE
@@ -122,7 +122,7 @@ target_compile_definitions(quickeject PRIVATE
 # shell32       - Shell_NotifyIcon (tray)
 # ole32         - CoTaskMemFree for shell folder helpers
 # advapi32      - registry (settings backup path, autostart)
-target_link_libraries(quickeject PRIVATE
+target_link_libraries(usb-switch PRIVATE
     setupapi
     cfgmgr32
     comctl32
@@ -133,18 +133,23 @@ target_link_libraries(quickeject PRIVATE
     gdi32)
 
 if(MSVC)
-    target_compile_options(quickeject PRIVATE /W4 /permissive-)
+    target_compile_options(usb-switch PRIVATE /W4 /permissive- /utf-8)
+    set_property(TARGET usb-switch PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    # MSVC's linker embeds a manifest itself. Supply ours to the linker so it
+    # merges the manifests instead of emitting a second resource with id 1.
+    target_compile_definitions(usb-switch_resources PRIVATE QE_MSVC_MANIFEST)
+    target_link_options(usb-switch PRIVATE "/MANIFESTINPUT:${QUICKEJECT_MANIFEST_PATH}")
 else()
-    target_compile_options(quickeject PRIVATE -Wall -Wextra)
+    target_compile_options(usb-switch PRIVATE -Wall -Wextra)
     # wWinMain + no console window for a subsystem:windows executable.
     # -static keeps the binary self-contained: no libgcc/libstdc++/winpthread
-    # DLLs have to ship next to quickeject.exe.
-    target_link_options(quickeject PRIVATE -municode -mwindows -static)
+    # DLLs have to ship next to usb-switch.exe.
+    target_link_options(usb-switch PRIVATE -municode -mwindows -static)
 endif()
 
 # ---------------------------------------------------------------------------
 # Install layout (used by `cmake --install`; the Inno Setup script mirrors it)
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
-install(TARGETS quickeject RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(TARGETS usb-switch RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES README.md LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})

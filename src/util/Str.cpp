@@ -7,6 +7,12 @@
 #include <cwchar>
 
 namespace qe::str {
+
+bool IsDriveLetterMount(std::wstring_view path) {
+    return path.size() == 3 &&
+           ((path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z')) &&
+           path[1] == L':' && path[2] == L'\\';
+}
 namespace {
 
 constexpr size_t kFormatLimit = 8 * 1024;

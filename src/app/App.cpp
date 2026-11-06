@@ -3,6 +3,7 @@
 #include <string>
 
 #include "app/AppInfo.h"
+#include "app/AutoStart.h"
 #include "app/Logger.h"
 #include "app/Settings.h"
 #include "app/Updater.h"
@@ -44,7 +45,7 @@ InitStatus App::Init() {
     // re-read the settings, and the "settings loaded" line would appear twice
     // in every GUI run.
 
-    if (!singleInstance_.Acquire(L"QuickEject")) {
+    if (!singleInstance_.Acquire(L"USB-Switch")) {
         SingleInstance::SignalExisting(MainWindow::kClassName);
         return InitStatus::AlreadyRunning;
     }
@@ -52,16 +53,23 @@ InitStatus App::Init() {
     window_ = std::make_unique<MainWindow>(instance_);
     if (!window_->Create()) {
         const auto& strings = i18n::I18n::Instance();
-        MessageBoxW(nullptr, strings.Get(i18n::StrId::ErrorWindowCreation), QUICKEJECT_APP_NAME_W,
+        const auto error = window_->TrayCreationFailed() ? i18n::StrId::ErrorTrayCreation : i18n::StrId::ErrorWindowCreation;
+        MessageBoxW(nullptr, strings.Get(error), QUICKEJECT_APP_NAME_W,
                     MB_OK | MB_ICONERROR);
-        QE_LOG_ERROR(L"startup failed: %ls", strings.Get(i18n::StrId::ErrorWindowCreation));
+        QE_LOG_ERROR(L"startup failed: %ls", strings.Get(error));
         return InitStatus::FatalError;
     }
 
     // Keep the Run entry pointing at the current executable (the installer
     // moves the binary on upgrade).
     if (Settings::Instance().Data().runAtStartup) {
-        window_->ApplyRunAtStartup(true);
+        if (window_->ApplyRunAtStartup(true)) {
+            const std::wstring command = AutoStart::CommandLine();
+            const size_t slash = command.find_last_of(L"\\/");
+            if (slash != std::wstring::npos) {
+                AutoStart::ClearIfMatches(L"QuickEject", command.substr(0, slash + 1) + L"quickeject.exe\"");
+            }
+        }
     }
 
     // Extension point: a real build queries the update channel here.
