@@ -14,6 +14,9 @@ inline json::Value DeviceJson(const Device& device) {
     row.Set(L"volumeLabel", Value::String(device.volumeLabel));
     row.Set(L"bus", Value::String(BusTypeName(device.busType)));
     row.Set(L"removable", Value::Bool(device.removable));
+    row.Set(L"mediaState", Value::String(device.mediaState == MediaState::Empty ? L"empty" :
+        device.mediaState == MediaState::Present ? L"present" :
+        device.mediaState == MediaState::NotReady ? L"not_ready" : L"unknown"));
     row.Set(L"driverMediaRemovable", device.driverMediaRemovable.has_value()
         ? Value::Bool(*device.driverMediaRemovable) : Value::Null());
     row.Set(L"ejectable", Value::Bool(device.CanEject()));

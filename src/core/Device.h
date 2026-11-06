@@ -26,6 +26,7 @@ enum class BusType {
 // Short technical label for logs and CLI output ("USB", "SD", ...).
 const wchar_t* BusTypeName(BusType busType);
 
+enum class MediaState { Unknown, Present, Empty, NotReady };
 struct Device {
     // Stable PnP instance id, e.g.
     // "USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0".
@@ -45,6 +46,8 @@ struct Device {
     BusType busType = BusType::Unknown;
     bool removable = false;
     std::optional<bool> driverMediaRemovable;
+    MediaState mediaState = MediaState::Unknown;
+    bool MediaUnavailable() const { return mediaState == MediaState::Empty || mediaState == MediaState::NotReady; }
     uint64_t sizeBytes = 0;
 
     // PnP instance handle used for the eject request. 0 means "cannot eject".

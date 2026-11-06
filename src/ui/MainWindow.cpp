@@ -40,6 +40,17 @@ constexpr UINT kCommandReconnect = 0x2006;
 constexpr UINT kCommandSettings = 0x2002;
 constexpr UINT kAliasBase = 0x100000;
 constexpr UINT kMediaBase = 0x200000;
+constexpr UINT kHideBase = 0x300000;
+constexpr UINT kRestoreBase = 0x400000;
+
+std::wstring MenuLabel(const std::wstring& name) {
+    std::wstring label;
+    for (auto c : name) {
+        if (c == L'&') label += c;
+        label += c;
+    }
+    return label;
+}
 constexpr int kMenuHotkey = 1;
 constexpr UINT kCommandLogs = 0x2005;
 constexpr UINT kCommandAbout = 0x2003;
@@ -394,30 +405,37 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     UINT itemPosition = 0;
     HMENU aliases = nullptr;
     HMENU media = nullptr;
+    HMENU hide = nullptr;
+    const auto& preferences = Settings::Instance().Data();
+    const auto hidden = preferences.hiddenDevices;
+    std::vector<std::wstring> restoreIds;
     const auto devices = scanRetryMs_ ? DeviceList{} : devices_.Devices();
     if (scanRetryMs_) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuScanUnavailable));
     } else if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
-        aliases = CreatePopupMenu();
         for (const auto& device : devices) {
-            const UINT commandId = kDeviceCommandBase + itemPosition;
-            // Win32 treats a single ampersand as a keyboard mnemonic.
-            std::wstring menuName;
-            for (wchar_t ch : Settings::Instance().Data().DeviceName(device.instanceId, device.displayName)) {
-                if (ch == L'&') menuName += ch;
-                menuName += ch;
+            const auto index = itemPosition++;
+            if (hidden.count(str::Lower(device.instanceId))) continue;
+            const auto menuName = MenuLabel(preferences.DeviceName(device.instanceId, device.displayName));
+            auto title = device.mediaState == MediaState::Empty ? i18n::StrId::EmptySlot :
+                         device.mediaState == MediaState::NotReady ? i18n::StrId::SlotNotReady : i18n::StrId::MenuEjectItem;
+            AppendMenuW(menu, MF_STRING | (device.MediaUnavailable() ? MF_GRAYED : 0), kDeviceCommandBase + index,
+                        strings.Format(title, menuName).c_str());
+            if (!aliases) aliases = CreatePopupMenu();
+            if (aliases) AppendMenuW(aliases, MF_STRING, kAliasBase + index, menuName.c_str());
+            if (!device.instanceId.empty()) {
+                if (!hide) hide = CreatePopupMenu();
+                if (hide) AppendMenuW(hide, MF_STRING, kHideBase + index, menuName.c_str());
             }
-            AppendMenuW(menu, MF_STRING, commandId,
-                        strings.Format(i18n::StrId::MenuEjectItem, menuName).c_str());
-            if (aliases) AppendMenuW(aliases, MF_STRING, kAliasBase + itemPosition, menuName.c_str());
-            if (device.driverMediaRemovable == true && !device.volumeInterfaces.empty()) {
+            if (!device.MediaUnavailable() && device.driverMediaRemovable == true && !device.volumeInterfaces.empty()) {
                 if (!media) media = CreatePopupMenu();
-                if (media) AppendMenuW(media, MF_STRING, kMediaBase + itemPosition, menuName.c_str());
+                if (media) AppendMenuW(media, MF_STRING, kMediaBase + index, menuName.c_str());
             }
-            ++itemPosition;
         }
+        if (!GetMenuItemCount(menu))
+            AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::AllHidden));
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
 
@@ -425,8 +443,26 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         DestroyMenu(media);
     if (aliases && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(aliases), strings.Get(i18n::StrId::MenuAliases)))
         DestroyMenu(aliases);
+    if (hide && !AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hide), strings.Get(i18n::StrId::HideDevice)))
+        DestroyMenu(hide);
+    if (!hidden.empty()) {
+        HMENU restore = CreatePopupMenu();
+        if (restore) {
+            for (const auto& item : hidden) {
+                auto current = std::find_if(devices.begin(), devices.end(), [&](const Device& d) {
+                    return str::Lower(d.instanceId) == item.first;
+                });
+                auto name = current == devices.end() ? strings.Format(i18n::StrId::LastSeenDevice,item.second) :
+                    preferences.DeviceName(current->instanceId,current->displayName);
+                AppendMenuW(restore, MF_STRING, kRestoreBase + restoreIds.size(), MenuLabel(name).c_str());
+                restoreIds.push_back(item.first);
+            }
+            if (!AppendMenuW(menu, MF_POPUP,reinterpret_cast<UINT_PTR>(restore),strings.Get(i18n::StrId::RestoreDevice)))
+                DestroyMenu(restore);
+        }
+    }
     const auto reconnectTarget = stoppedTarget_;
-    if (!reconnectTarget.empty()) {
+    if (!reconnectTarget.empty() && !hidden.count(str::Lower(stoppedDisk_))) {
         std::wstring caption;
         for (wchar_t ch : strings.Format(i18n::StrId::ReconnectDevice, stoppedName_)) {
             if (ch == L'&') caption += ch;
@@ -512,6 +548,19 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                         QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
         }
         RefreshDevices();
+    } else if (id >= kHideBase) {
+        auto& settings = Settings::Instance();
+        auto& entries = settings.Data().hiddenDevices;
+        const auto previous = entries;
+        if (id >= kRestoreBase && id-kRestoreBase < restoreIds.size()) entries.erase(restoreIds[id-kRestoreBase]);
+        else if (id < kRestoreBase && id-kHideBase < devices.size()) {
+            const auto& d = devices[id-kHideBase];
+            entries[str::Lower(d.instanceId)] = preferences.DeviceName(d.instanceId,d.displayName);
+        } else return;
+        if (!settings.Save()) {
+            entries = previous;
+            MessageBoxW(hwnd_,strings.Get(i18n::StrId::SettingsSaveFailed),QUICKEJECT_APP_NAME_W,MB_ICONWARNING);
+        }
     } else if (id >= kMediaBase) {
         const auto index = id - kMediaBase;
         if (!scanRetryMs_ && index < devices.size()) EjectMedium(devices[index]);

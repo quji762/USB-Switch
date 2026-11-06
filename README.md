@@ -12,6 +12,12 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
+## 1.5.0：隐藏设备和识别空卡槽
+
+托盘菜单中选择 **隐藏设备 → 设备名**，该设备便从主列表、设置别名和退卡列表中隐藏。选择 **重新显示设备** 可恢复；设备已断开时也可以按上次显示的名称恢复。设置按当前用户和设备实例 ID 保存，重启后仍有效，不按盘符匹配。隐藏仅影响托盘菜单，不会卸载设备，也不会改变命令行清单。
+
+对报告支持可移动介质的设备，程序向驱动查询介质是否就绪。明确报告无介质的槽位显示“空卡槽”；仅报告未就绪的设备显示“无可用介质（空槽或未就绪）”。两种情况下菜单项均置灰，也不提供退卡。部分读卡器在卡片已退出但尚未取走时与物理空槽返回同一状态。程序不会因容量未知、没有卷标或没有盘符而断言空槽。`--list --json` 的 `mediaState` 分别为 `present`、`empty`、`not_ready` 或 `unknown`。
+
 ## 1.4.0：查看阻止弹出的程序打开了哪些文件
 
 如果 Windows 拒绝弹出并报告了关联程序，在托盘提示中选择 **查看打开的文件**。程序会按 PID 列出当下仍在目标盘上打开的文件或文件夹；保存并关闭相关文档后可手动重试。这个列表是排查线索，不能证明每个列出的文件都是阻塞原因。权限不足、进程已退出、仅有内存映射或文件已关闭时，可能没有路径。文件路径不写入应用日志，也不会自动提权或关闭文件。
@@ -157,7 +163,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.4.0 — removable devices
+USB-Switch 1.5.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```

@@ -39,6 +39,8 @@ DWORD Layout(const MediaIo& io, HANDLE disk, Ranges& ranges) {
 }
 
 MediaResult EjectMedia(const Device& device, const MediaIo& io) {
+    if (device.MediaUnavailable()) return device.mediaState == MediaState::Empty ?
+        MediaResult{L"no_media", ERROR_NO_MEDIA_IN_DRIVE} : MediaResult{L"not_ready", ERROR_NOT_READY};
     if (device.driverMediaRemovable != true || device.diskInterface.empty() || device.volumeInterfaces.empty())
         return {L"unsupported_media", ERROR_NOT_SUPPORTED};
     constexpr DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;

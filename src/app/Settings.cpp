@@ -37,6 +37,12 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
                 settings.aliases[id] = name;
         }
     }
+    if (const auto* hidden = root.Find(L"hiddenDevices"); hidden && hidden->IsObject()) {
+        for (const auto& id : hidden->Keys()) {
+            auto name = hidden->GetString(id, L"");
+            if (!id.empty() && !name.empty()) settings.hiddenDevices[str::Lower(id)] = std::move(name);
+        }
+    }
     settings.runAtStartup = root.GetBool(L"runAtStartup", settings.runAtStartup);
     settings.showNotifications = root.GetBool(L"showNotifications", settings.showNotifications);
     settings.confirmBeforeEject = root.GetBool(L"confirmBeforeEject", settings.confirmBeforeEject);
@@ -49,6 +55,9 @@ json::Value AppSettings::ToJson() const {
     auto names = json::Value::Object();
     for (const auto& item : aliases) names.Set(item.first, json::Value::String(item.second));
     root.Set(L"deviceAliases", std::move(names));
+    auto hidden = json::Value::Object();
+    for (const auto& item : hiddenDevices) hidden.Set(item.first, json::Value::String(item.second));
+    root.Set(L"hiddenDevices", std::move(hidden));
     root.Set(L"language", json::Value::String(language));
     root.Set(L"runAtStartup", json::Value::Bool(runAtStartup));
     root.Set(L"showNotifications", json::Value::Bool(showNotifications));

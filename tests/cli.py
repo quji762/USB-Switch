@@ -34,6 +34,7 @@ for row in rows:
     assert isinstance(row["instanceId"], str) and row["instanceId"]
     assert isinstance(row["driveLetters"], list)
     assert isinstance(row["ejectable"], bool)
+    assert row["mediaState"] in {"unknown", "present", "empty", "not_ready"}
     assert row["driverMediaRemovable"] is None or isinstance(row["driverMediaRemovable"], bool)
 print(f"UTF-8 JSON inventory parsed: {len(rows)} device(s)")
 

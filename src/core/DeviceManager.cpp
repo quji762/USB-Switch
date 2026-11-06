@@ -221,6 +221,15 @@ bool DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
                             &hotplug, sizeof(hotplug), &bytes, nullptr) &&
             bytes >= sizeof(hotplug) && hotplug.Size == sizeof(hotplug))
             disk.driverMediaRemovable = hotplug.MediaRemovable != FALSE;
+        if (disk.driverMediaRemovable == true || disk.removableMedia) {
+            if (DeviceIoControl(device.Get(), IOCTL_STORAGE_CHECK_VERIFY2, nullptr, 0, nullptr, 0, &bytes, nullptr))
+                disk.mediaState = MediaState::Present;
+            else {
+                const DWORD error = GetLastError();
+                if (error == ERROR_NO_MEDIA_IN_DRIVE) disk.mediaState = MediaState::Empty;
+                else if (error == ERROR_NOT_READY) disk.mediaState = MediaState::NotReady;
+            }
+        }
         if (disk.storageBusType == 0xFFFFFFFF) {
             // The descriptor IOCTL failed. Some real removable devices do not
             // implement it, so the bus type stays unknown; the device is still
@@ -372,6 +381,7 @@ bool DeviceManager::Refresh() {
         device.deviceNumber = disk.deviceNumber;
         device.busType = busType;
         device.driverMediaRemovable = disk.driverMediaRemovable;
+        device.mediaState = disk.mediaState;
         device.removable = disk.removableMedia || disk.volumeIsRemovable || isUsb;
         device.volumeLabel = disk.volumeLabel;
         device.driveLetters = disk.driveLetters;

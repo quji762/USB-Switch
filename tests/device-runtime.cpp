@@ -139,8 +139,11 @@ int main(int argc, char** argv) {
     } else Check(false, "start restart-monitor test child");
     qe::AppSettings input;
     input.aliases[L"id-a"] = L"Backup";
+    input.hiddenDevices[L"USBSTOR\\reader&0"] = L"Card (D:)";
     input.menuHotkey = L"J";
     const auto saved = qe::AppSettings::FromJson(input.ToJson());
+    Check(saved.hiddenDevices.count(L"usbstor\\reader&0") && !saved.hiddenDevices.count(L"usbstor\\reader&1"),
+          "hidden slot settings survive reload without hiding its sibling");
     Check(saved.menuHotkey == L"J" && saved.DeviceName(L"id-a", L"E:").find(L"Backup") == 0 &&
           saved.DeviceName(L"id-b", L"D:") == L"D:", "alias follows device identity and hotkey persists");
     topology::Verify();

@@ -73,6 +73,7 @@ private:
         ULONG storageBusType = 0xFFFFFFFF;  // STORAGE_BUS_TYPE value
         bool removableMedia = false;
         std::optional<bool> driverMediaRemovable;
+        MediaState mediaState = MediaState::Unknown;
         std::wstring instanceId;
         std::wstring diskInterface;
         std::vector<std::wstring> volumeInterfaces;
