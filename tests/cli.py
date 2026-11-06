@@ -7,7 +7,10 @@ import sys
 exe = Path(sys.argv[1]).resolve()
 for args, status, marker in [
     (["--version"], 0, "usb-switch"),
-    (["--help"], 0, "--list"),
+    (["--help"], 0, "--eject-media"),
+    (["--eject-media"], 2, "--list"),
+    (["--eject-media", "--json"], 2, "--list"),
+    (["--eject-media", "missing-device", "--eject", "another-device"], 2, "--list"),
     (["--eject="], 2, "--list"),
     (["--eject", ""], 2, "--list"),
     (["--eject=   "], 2, "--list"),
@@ -28,7 +31,9 @@ for row in rows:
     assert isinstance(row["instanceId"], str) and row["instanceId"]
     assert isinstance(row["driveLetters"], list)
     assert isinstance(row["ejectable"], bool)
+    assert row["driverMediaRemovable"] is None or isinstance(row["driverMediaRemovable"], bool)
 print(f"UTF-8 JSON inventory parsed: {len(rows)} device(s)")
 
-run = subprocess.run([exe, "--eject", "USB-Switch-missing-device", "--json"], capture_output=True, encoding="utf-8", timeout=20)
-assert run.returncode == 2 and json.loads(run.stdout) == {"status": "not_found", "retryable": False}
+for action in ("--eject", "--eject-media"):
+    run = subprocess.run([exe, action, "USB-Switch-missing-device", "--json"], capture_output=True, encoding="utf-8", timeout=20)
+    assert run.returncode == 2 and json.loads(run.stdout) == {"status": "not_found", "retryable": False}

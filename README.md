@@ -12,11 +12,11 @@ A Windows tray tool for safely removing USB storage. Select a drive from the tra
 
 **English:** Install the app or extract the portable ZIP to your PC and run `usb-switch.exe`. Open the icon next to the clock (check the hidden icons if needed), match the drive letter, then select the device and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
 
-## 开发版：重新连接刚弹出的设备（实验功能）
+## 1.3.0 测试版：重新连接刚弹出的设备（实验功能）
 
 用托盘安全弹出设备后，如果还没有拔下，可打开托盘菜单选择“重新连接：设备名”。程序只记住本次运行中最后一次成功弹出的设备；退出程序即清除记录。Windows 必须仍将原节点标记为已准备弹出。若需要管理员权限，可以选择打开系统授权提示，或取消并手动拔插。授权步骤使用 Windows 自带的 `pnputil /restart-device` 针对原实例 ID 操作。授权命令运行期间不能重复提交。若命令返回错误，托盘显示 Windows 错误及编号；若命令成功但原磁盘十秒内仍未出现在列表中，托盘会提示刷新或手动拔插。此功能尚未包含在 1.2.0 安装包内。
 
-## 开发版：只退出介质（实验功能）
+## 1.3.0 测试版：只退出介质（实验功能）
 
 要换读卡器里的卡，可在托盘选择 **只退出介质 → 目标设备**，核对卷标、盘符后选“是”。对话框默认选“否”。这个菜单按驱动报告的介质属性列出候选项，普通 U 盘也可能出现；若要拔下整个设备，请用主菜单的安全弹出。此功能尚未包含在 1.2.0 安装包内。
 
@@ -139,7 +139,7 @@ Inno Setup 有独立的使用和分发条款；商业使用者请参阅其
 枚举失败时返回退出码 1，并输出 `{"error":"enumeration_failed"}`。字段名不随界面语言变化。
 `mountPaths` 列出已识别的挂载路径（含盘符根目录和文件夹），`driveLetters` 仅列出设备自身的盘符，`mountedVolumeBytes` 是已识别挂载卷的容量之和（十进制字节字符串，未知为 `null`），不代表整块物理磁盘的标称容量。
 
-开发版的 `--list --json` 另含 `driverMediaRemovable`：驱动报告介质可移除为 `true`，不可移除为 `false`，无法查询为 `null`。普通 U 盘也可能返回 `true`；此字段不能单独用来判定读卡器或允许只弹卡。
+1.3.0 的 `--list --json` 另含 `driverMediaRemovable`：驱动报告介质可移除为 `true`，不可移除为 `false`，无法查询为 `null`。普通 U 盘也可能返回 `true`；此字段不能单独用来判定读卡器或允许只弹卡。
 
 ```powershell
 $devices = .\usb-switch.exe --list --json | Out-String | ConvertFrom-Json
@@ -149,7 +149,7 @@ $devices | Select-Object displayName, driveLetters, instanceId
 `--list` 输出示例：
 
 ```
-USB-Switch 1.2.0 — removable devices
+USB-Switch 1.3.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
 ```
