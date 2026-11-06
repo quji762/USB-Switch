@@ -22,6 +22,9 @@ public:
     bool Acquire(std::wstring_view uniqueName);
     void Release() noexcept;
 
+    // Releases the mutex if it is still held.
+    ~SingleInstance() { Release(); }
+
     // Posts a "wake up" message to the running instance's window.
     static void SignalExisting(std::wstring_view windowClassName);
 

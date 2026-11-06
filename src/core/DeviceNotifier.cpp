@@ -83,11 +83,21 @@ std::wstring DeviceNotifier::DescribeChange(UINT event, LPARAM data) {
 
     if (data == 0) return str::Format(L"%ls (no payload)", action);
     const auto* header = reinterpret_cast<const DEV_BROADCAST_HDR*>(data);
+    if (header->dbch_size < sizeof(DEV_BROADCAST_HDR)) {
+        return str::Format(L"%ls (truncated payload)", action);
+    }
     if (header->dbch_devicetype == DBT_DEVTYP_VOLUME) {
+        if (header->dbch_size < sizeof(DEV_BROADCAST_VOLUME)) {
+            return str::Format(L"%ls (truncated volume payload)", action);
+        }
         const auto* volume = reinterpret_cast<const DEV_BROADCAST_VOLUME*>(data);
-        return str::Format(L"%ls of volume %ls", action, DriveLettersFromMask(volume->dbcv_unitmask).c_str());
+        return str::Format(L"%ls of volume %ls", action,
+                           DriveLettersFromMask(volume->dbcv_unitmask).c_str());
     }
     if (header->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+        if (header->dbch_size < sizeof(DEV_BROADCAST_DEVICEINTERFACE_W)) {
+            return str::Format(L"%ls (truncated interface payload)", action);
+        }
         const auto* interfaceChange = reinterpret_cast<const DEV_BROADCAST_DEVICEINTERFACE_W*>(data);
         return str::Format(L"%ls of interface %ls", action, interfaceChange->dbcc_name);
     }

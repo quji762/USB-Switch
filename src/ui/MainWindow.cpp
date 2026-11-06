@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 
 #include <windows.h>
+#include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include <algorithm>
 
@@ -83,7 +84,14 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
     if (message == WM_NCCREATE) {
         const auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
         self = static_cast<MainWindow*>(create->lpCreateParams);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+        // If the instance pointer cannot be stored, every later message would
+        // find self == nullptr and silently fall through to DefWindowProcW,
+        // leaving a window that does nothing. Aborting the creation is the
+        // documented response.
+        if (SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self)) == 0 &&
+            GetLastError() != ERROR_SUCCESS) {
+            return FALSE;
+        }
     } else {
         self = reinterpret_cast<MainWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     }
@@ -100,6 +108,19 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         case WM_TIMER:
             OnRescanTimer();
             return 0;
+        case WM_DPICHANGED: {
+            // The manifest declares PerMonitorV2, so the icon is reloaded at the
+            // new DPI instead of staying at the size captured at startup.
+            const UINT dpi = HIWORD(wParam);
+            const int size = dpi > 0 ? MulDiv(16, static_cast<int>(dpi), 96) : 16;
+            if (icon_ != nullptr && ownsIcon_) {
+                DestroyIcon(icon_);
+                icon_ = nullptr;
+            }
+            icon_ = LoadTrayIconAt(size);
+            tray_.UpdateIcon(icon_);
+            return 0;
+        }
         case WM_DEVICECHANGE:
             OnDeviceChange(static_cast<UINT>(wParam), lParam);
             return 0;
@@ -116,10 +137,12 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
             break;
     }
 
-    // Explorer restarts drop every tray icon; re-add ours.
+    // Explorer restarts drop every tray icon; re-add ours, then restore the
+    // device-count suffix in the tooltip (Recreate alone would lose it).
     if (taskbarCreatedMessage_ != 0 && message == taskbarCreatedMessage_) {
         QE_LOG_INFO(L"taskbar restarted; recreating tray icon");
         tray_.Recreate(icon_, i18n::I18n::Instance().Get(i18n::StrId::AppTooltip));
+        RebuildTrayTip();
         return 0;
     }
     return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -155,9 +178,17 @@ void MainWindow::OnDestroy() {
     PostQuitMessage(0);
 }
 
-HICON MainWindow::LoadTrayIcon() const {
-    int size = GetSystemMetrics(SM_CXSMICON);
-    if (size <= 0) size = 16;
+HICON MainWindow::LoadTrayIcon() const { return LoadTrayIconAt(GetTrayIconSize()); }
+
+int MainWindow::GetTrayIconSize() {
+    // GetSystemMetrics is DPI aware for PerMonitorV2 processes, but on a
+    // mixed-DPI setup it reports the primary monitor's value; callers that
+    // know the target DPI (WM_DPICHANGED) pass it explicitly.
+    const int size = GetSystemMetrics(SM_CXSMICON);
+    return size > 0 ? size : 16;
+}
+
+HICON MainWindow::LoadTrayIconAt(int size) const {
     HICON icon = static_cast<HICON>(
         LoadImageW(instance_, kIconResourceName, IMAGE_ICON, size, size, 0));
     if (icon != nullptr) {
@@ -171,9 +202,18 @@ HICON MainWindow::LoadTrayIcon() const {
 }
 
 void MainWindow::OnTrayNotify(LPARAM lParam) {
+    // WM_CONTEXTMENU carries the icon position in lParam, which the shell
+    // supplies when the menu is invoked from the keyboard - using the cursor
+    // position instead would open the menu on the wrong monitor.
+    POINT fromShell{};
+    fromShell.x = GET_X_LPARAM(lParam);
+    fromShell.y = GET_Y_LPARAM(lParam);
+
     switch (LOWORD(lParam)) {
         case WM_RBUTTONUP:
         case WM_CONTEXTMENU:
+            ShowTrayMenu(&fromShell);
+            break;
         case WM_LBUTTONUP:
         case NIN_SELECT:
             ShowTrayMenu();
@@ -211,7 +251,7 @@ void MainWindow::RefreshDevices() {
             }
         }
         for (const auto& entry : before) {
-            if (devices_.FindByInstanceId(entry.first) == nullptr) {
+            if (!devices_.FindByInstanceId(entry.first)) {
                 QE_LOG_INFO(L"device disconnected: %ls", entry.second.c_str());
                 if (notify) {
                     tray_.ShowBalloon(strings.Format(i18n::StrId::DeviceRemoved, entry.second), L"");
@@ -237,7 +277,7 @@ void MainWindow::RebuildTrayTip() {
     tray_.UpdateTooltip(tooltip);
 }
 
-void MainWindow::ShowTrayMenu() {
+void MainWindow::ShowTrayMenu(const POINT* position) {
     const auto& strings = i18n::I18n::Instance();
     HMENU menu = CreatePopupMenu();
     if (menu == nullptr) {
@@ -246,17 +286,17 @@ void MainWindow::ShowTrayMenu() {
     }
 
     menuCommands_.clear();
-    UINT position = 0;
+    UINT itemPosition = 0;
     const auto& devices = devices_.Devices();
     if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
         for (const auto& device : devices) {
-            const UINT commandId = kDeviceCommandBase + position;
+            const UINT commandId = kDeviceCommandBase + itemPosition;
             menuCommands_[commandId] = device.instanceId;
             AppendMenuW(menu, MF_STRING, commandId,
                         strings.Format(i18n::StrId::MenuEjectItem, device.displayName).c_str());
-            ++position;
+            ++itemPosition;
         }
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
@@ -268,7 +308,11 @@ void MainWindow::ShowTrayMenu() {
     AppendMenuW(menu, MF_STRING, kCommandExit, strings.Get(i18n::StrId::MenuExit));
 
     POINT cursor{};
-    GetCursorPos(&cursor);
+    if (position != nullptr) {
+        cursor = *position;
+    } else {
+        GetCursorPos(&cursor);
+    }
     // Without SetForegroundWindow the popup menu does not dismiss on outside
     // clicks; the WM_NULL post restores correct keyboard focus afterwards.
     SetForegroundWindow(hwnd_);
@@ -303,8 +347,9 @@ void MainWindow::OnMenuCommand(UINT commandId) {
     if (commandId >= kDeviceCommandBase) {
         const auto it = menuCommands_.find(commandId);
         if (it == menuCommands_.end()) return;
-        const Device* device = devices_.FindByInstanceId(it->second);
-        if (device == nullptr) {
+        // A copy: the menu can stay open while a rescan replaces devices_.
+        const std::optional<Device> device = devices_.FindByInstanceId(it->second);
+        if (!device) {
             RefreshDevices();  // the device disappeared between menu and click
             return;
         }
@@ -316,30 +361,39 @@ void MainWindow::EjectDevice(const Device& device) {
     const auto& strings = i18n::I18n::Instance();
     const AppSettings& settings = Settings::Instance().Data();
 
+    // Copy what we need up front. `device` points into DeviceManager::devices_,
+    // which RefreshDevices() replaces wholesale (devices_ = std::move(next)),
+    // freeing every old Device. The confirmation dialog below is modal and
+    // pumps messages, so a hot-plug event arriving while it is open starts the
+    // rescan timer and can rescan before the user answers - reading
+    // device.displayName or device.devInst after that is a use-after-free.
+    const DEVINST devInst = device.devInst;
+    const std::wstring displayName = device.displayName;
+
     if (settings.confirmBeforeEject) {
-        const std::wstring text = strings.Format(i18n::StrId::ConfirmEjectText, device.displayName);
+        const std::wstring text = strings.Format(i18n::StrId::ConfirmEjectText, displayName);
         if (MessageBoxW(nullptr, text.c_str(), strings.Get(i18n::StrId::ConfirmEjectTitle),
                         MB_YESNO | MB_ICONQUESTION | MB_TOPMOST) != IDYES) {
             return;
         }
     }
 
-    QE_LOG_INFO(L"ejecting %ls", device.displayName.c_str());
-    const EjectResult result = Ejector::Eject(device.devInst);
+    QE_LOG_INFO(L"ejecting %ls", displayName.c_str());
+    const EjectResult result = Ejector::Eject(devInst);
     if (result.Succeeded()) {
-        QE_LOG_INFO(L"eject succeeded for %ls", device.displayName.c_str());
+        QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
         if (settings.showNotifications) {
             tray_.ShowBalloon(strings.Get(i18n::StrId::EjectOkTitle),
-                              strings.Format(i18n::StrId::EjectOkText, device.displayName), NIIF_INFO);
+                              strings.Format(i18n::StrId::EjectOkText, displayName), NIIF_INFO);
         }
         RefreshDevices();
         return;
     }
 
     const std::wstring reason = Ejector::Describe(result);
-    QE_LOG_WARN(L"eject failed for %ls: %ls", device.displayName.c_str(), reason.c_str());
+    QE_LOG_WARN(L"eject failed for %ls: %ls", displayName.c_str(), reason.c_str());
     MessageBoxW(nullptr,
-                strings.Format(i18n::StrId::EjectFailText, device.displayName, reason).c_str(),
+                strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),
                 strings.Get(i18n::StrId::EjectFailTitle), MB_OK | MB_ICONWARNING | MB_TOPMOST);
 }
 
@@ -359,7 +413,10 @@ void MainWindow::ApplyRunAtStartup(bool enabled) {
     }
     const bool ok = enabled ? AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command)
                             : AutoStart::Clear(QUICKEJECT_APP_NAME_W);
-    QE_LOG_INFO(L"run-at-startup %s: %s", enabled ? "enabled" : "disabled", ok ? "ok" : "failed");
+    // %ls, not %s: in the wprintf family %s already means a wide string, so
+    // passing these narrow literals would be undefined behaviour.
+    QE_LOG_INFO(L"run-at-startup %ls: %ls", enabled ? L"enabled" : L"disabled",
+                ok ? L"ok" : L"failed");
 }
 
 void MainWindow::HandleSecondInstance() {

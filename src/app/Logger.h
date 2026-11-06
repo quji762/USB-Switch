@@ -5,7 +5,13 @@
 // as UTF-8. It is a diagnostic aid, not an audit trail: the previous file is
 // kept as .old once the current one passes 1 MiB, and nothing is flushed
 // synchronously (buffering is left to the CRT/OS).
+//
+// All entry points take a mutex. Updater::CheckAsync documents that its
+// callback may run on any thread, and a real implementation (WinHTTP on a
+// worker thread) will log from there - without the lock two writers would race
+// on file_ and path_.
 
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -32,11 +38,16 @@ public:
 
 private:
     Logger() = default;
-    void WriteLine(const std::wstring& line);
-    void RotateIfNeeded();
+    // The *Locked variants require mutex_ to be held by the caller. They are
+    // separate from the public entry points because std::mutex is not
+    // recursive: a locked public method must not call another public one.
+    void WriteLineLocked(const std::wstring& line);
+    void RotateIfNeededLocked();
+    void CloseFileLocked();
 
     std::wstring path_;
     void* file_ = nullptr;  // HANDLE, kept opaque so this header stays light
+    std::mutex mutex_;
 };
 
 }  // namespace qe

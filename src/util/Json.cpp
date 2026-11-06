@@ -43,7 +43,14 @@ void AppendEscaped(std::wstring& out, std::wstring_view text) {
 }
 
 void AppendNumber(std::wstring& out, double number) {
-    if (std::isfinite(number) && number == std::floor(number) && std::fabs(number) < 1e15) {
+    // NaN and the infinities are not valid JSON. Writing them would produce a
+    // file no parser accepts - including this one - so the next load would fail
+    // and the settings would silently fall back to defaults.
+    if (!std::isfinite(number)) {
+        out += L"null";
+        return;
+    }
+    if (number == std::floor(number) && std::fabs(number) < 1e15) {
         out += str::Format(L"%lld", static_cast<long long>(number));
         return;
     }
@@ -185,12 +192,49 @@ private:
         return false;
     }
 
+    // Manual scan over the JSON number grammar: '-'? int frac? exp?
+    // std::wcstod is not usable here - it also accepts "0x1F", "+5", "inf" and
+    // "nan", none of which are valid JSON, and an overflowing exponent yields
+    // an infinity that Dump() could not write back out.
     bool ParseNumber(Value& out) {
-        const wchar_t* begin = text_.data() + pos_;
+        const size_t start = pos_;
+        if (Peek() == L'-') ++pos_;
+        if (pos_ >= text_.size()) return false;
+
+        size_t intDigits = 0;
+        while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+            ++pos_;
+            ++intDigits;
+        }
+        if (intDigits == 0) return false;  // no integer part
+
+        if (pos_ < text_.size() && text_[pos_] == L'.') {
+            ++pos_;
+            size_t fracDigits = 0;
+            while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+                ++pos_;
+                ++fracDigits;
+            }
+            if (fracDigits == 0) return false;  // '.' must be followed by digits
+        }
+
+        if (pos_ < text_.size() && (text_[pos_] == L'e' || text_[pos_] == L'E')) {
+            ++pos_;
+            if (pos_ < text_.size() && (text_[pos_] == L'+' || text_[pos_] == L'-')) ++pos_;
+            size_t expDigits = 0;
+            while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+                ++pos_;
+                ++expDigits;
+            }
+            if (expDigits == 0) return false;  // exponent must have digits
+        }
+
+        // str::Format cannot be used on a string_view, so copy the token.
+        const std::wstring token(text_.substr(start, pos_ - start));
         wchar_t* end = nullptr;
-        double number = std::wcstod(begin, &end);
-        if (end == begin) return false;
-        pos_ += static_cast<size_t>(end - begin);
+        const double number = std::wcstod(token.c_str(), &end);
+        if (end != token.c_str() + token.size()) return false;
+        if (!std::isfinite(number)) return false;  // reject overflow to infinity
         out = Value::Number(number);
         return true;
     }
@@ -512,13 +556,19 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) 
         CreateDirectories(path.substr(0, slash));
     }
 
-    std::string bytes = str::ToUtf8(root.Dump());
+    const std::string bytes = str::ToUtf8(root.Dump());
     const char bom[] = "\xEF\xBB\xBF";
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+
+    // Write to a temporary file and rename it into place. Writing straight to
+    // the target with CREATE_ALWAYS would leave a truncated settings.json if
+    // the disk fills up or the machine loses power mid-write, and the next
+    // start would silently fall back to defaults.
+    const std::wstring temporary = path + L".tmp";
+    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         if (error != nullptr) {
-            *error = str::Format(L"cannot write %ls: %ls", path.c_str(),
+            *error = str::Format(L"cannot write %ls: %ls", temporary.c_str(),
                                  str::Win32ErrorMessage(GetLastError()).c_str());
         }
         return false;
@@ -527,10 +577,22 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error) 
     DWORD written = 0;
     BOOL ok = WriteFile(file, bom, 3, &written, nullptr);
     ok = ok && WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
-    if (!ok && error != nullptr) {
-        *error = str::Format(L"cannot write %ls", path.c_str());
+    ok = ok && FlushFileBuffers(file);
+    handle.Reset();  // close before the rename
+    if (ok == FALSE) {
+        DeleteFileW(temporary.c_str());
+        if (error != nullptr) *error = str::Format(L"cannot write %ls", temporary.c_str());
+        return false;
     }
-    return ok != FALSE;
+    if (MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) == FALSE) {
+        DeleteFileW(temporary.c_str());
+        if (error != nullptr) {
+            *error = str::Format(L"cannot replace %ls: %ls", path.c_str(),
+                                 str::Win32ErrorMessage(GetLastError()).c_str());
+        }
+        return false;
+    }
+    return true;
 }
 
 }  // namespace qe::json

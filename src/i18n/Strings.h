@@ -42,8 +42,18 @@ enum class StrId {
     VetoOutstandingOpen,
     VetoDevice,
     VetoDriver,
-    VetoParentDevice,
+    VetoIllegalDeviceRequest,
+    VetoInsufficientPower,
+    VetoNonDisableable,
+    VetoLegacyDriver,
+    VetoInsufficientRights,
+    VetoAlreadyRemoved,
+    // Suffixes. The text PnP returns alongside a veto is only an application,
+    // service or driver name for some types; for others it is a device
+    // instance path, and for two types there is no text at all.
     VetoAppSuffix,
+    VetoDriverSuffix,
+    VetoDevicePathSuffix,
 
     // Settings dialog
     SettingsTitle,
@@ -55,6 +65,10 @@ enum class StrId {
     SettingsLanguageZh,
     SettingsLanguageEn,
     SettingsNote,
+
+    // Dialog buttons (set at runtime; the .rc templates keep English defaults)
+    DialogOk,
+    DialogCancel,
 
     // About dialog
     AboutTitle,

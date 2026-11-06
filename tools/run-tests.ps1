@@ -9,17 +9,20 @@
 
 .EXAMPLE
     .\tools\run-tests.ps1
+    .\tools\run-tests.ps1 -Runtime          # also run the device enumeration test
     .\tools\run-tests.ps1 -ToolChain 'C:\mingw64\bin'
 #>
 [CmdletBinding()]
 param(
-    [string]$ToolChain = ''
+    [string]$ToolChain = '',
+    [switch]$Runtime
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $genDir = Join-Path $root 'build\generated'
 $outExe = Join-Path $root 'build\tests\unit.exe'
+$runtimeExe = Join-Path $root 'build\tests\device-runtime.exe'
 
 function Find-Tool {
     param([string]$Name, [string]$Directory)
@@ -40,9 +43,9 @@ if (-not $gxx) {
 
 New-Item -ItemType Directory -Force -Path (Split-Path $outExe) | Out-Null
 
-# Include dirs mirror the main build: src/ for the project headers and
-# build/generated/ for the CMake-generated AppInfo.h.
-$includeDirs = @((Join-Path $root 'src'))
+# Include dirs mirror the main build: src/ for the project headers,
+# resources/ for resource.h, and build/generated/ for AppInfo.h.
+$includeDirs = @((Join-Path $root 'src'), (Join-Path $root 'resources'))
 $appInfo = Join-Path $genDir 'app\AppInfo.h'
 if (Test-Path $appInfo) { $includeDirs += $genDir }
 
@@ -62,6 +65,26 @@ Write-Host "built $outExe" -ForegroundColor Cyan
 & $outExe
 $code = $LASTEXITCODE
 Write-Host ''
+
+# --- optional: device enumeration against the real machine -------------------
+if ($Runtime) {
+    Write-Host ''
+    $sources = Get-ChildItem -Path (Join-Path $root 'src') -Filter '*.cpp' -Recurse |
+        Where-Object { $_.Name -ne 'main.cpp' -and $_.Name -ne 'App.cpp' } |
+        ForEach-Object { $_.FullName }
+    & $gxx -std=c++17 -O1 -g -Wall -Wextra `
+        -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE `
+        -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_CRT_SECURE_NO_WARNINGS `
+        ($includeDirs | ForEach-Object { "-I$_" }) `
+        -o $runtimeExe (Join-Path $root 'tests\device-runtime.cpp') @sources `
+        -lsetupapi -lcfgmgr32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
+    if ($LASTEXITCODE -ne 0) { throw "runtime test build failed ($LASTEXITCODE)" }
+    Write-Host "built $runtimeExe" -ForegroundColor Cyan
+    & $runtimeExe
+    if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
+    Write-Host ''
+}
+
 if ($code -eq 0) { Write-Host 'ALL TESTS PASSED' -ForegroundColor Green }
 else { Write-Host "TESTS FAILED (exit $code)" -ForegroundColor Red }
 exit $code

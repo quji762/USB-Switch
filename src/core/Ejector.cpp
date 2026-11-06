@@ -10,12 +10,20 @@
 namespace qe {
 namespace {
 
-// MinGW's cfgmgr32.h stops at PNP_VetoDriver and does not export
-// CM_MapCrToWin32Error, so both are provided here. Values follow the Windows
-// SDK definitions (PNP_VetoParentDevice == 8).
-#ifndef PNP_VetoParentDevice
-#define PNP_VetoParentDevice ((PNP_VETO_TYPE)8)
-#endif
+// PNP_VETO_TYPE values 8..13. MinGW's cfgmgr32.h stops at PNP_VetoDriver, and
+// these are plain enum constants (not macros), so an #ifndef guard would never
+// work - they are defined unconditionally with the values from cfg.h:
+//   8  PNP_VetoIllegalDeviceRequest   9  PNP_VetoInsufficientPower
+//   10 PNP_VetoNonDisableable         11 PNP_VetoLegacyDriver
+//   12 PNP_VetoInsufficientRights     13 PNP_VetoAlreadyRemoved
+// When a future SDK exports them these definitions simply collide harmlessly
+// with the same values, so no guard is needed either way.
+constexpr PNP_VETO_TYPE kVetoIllegalDeviceRequest = static_cast<PNP_VETO_TYPE>(8);
+constexpr PNP_VETO_TYPE kVetoInsufficientPower = static_cast<PNP_VETO_TYPE>(9);
+constexpr PNP_VETO_TYPE kVetoNonDisableable = static_cast<PNP_VETO_TYPE>(10);
+constexpr PNP_VETO_TYPE kVetoLegacyDriver = static_cast<PNP_VETO_TYPE>(11);
+constexpr PNP_VETO_TYPE kVetoInsufficientRights = static_cast<PNP_VETO_TYPE>(12);
+constexpr PNP_VETO_TYPE kVetoAlreadyRemoved = static_cast<PNP_VETO_TYPE>(13);
 
 unsigned long ConfigRetToWin32Error(CONFIGRET configRet) {
     switch (configRet) {
@@ -71,39 +79,83 @@ std::wstring Ejector::Describe(const EjectResult& result) {
 
     if (result.status == EjectStatus::Vetoed) {
         std::wstring reason;
+        i18n::StrId suffixId = i18n::StrId::VetoUnknown;
+        bool hasSuffix = false;
+
         switch (result.vetoType) {
             case PNP_VetoLegacyDevice:
                 reason = strings.Get(i18n::StrId::VetoLegacyDevice);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoPendingClose:
                 reason = strings.Get(i18n::StrId::VetoPendingClose);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoWindowsApp:
                 reason = strings.Get(i18n::StrId::VetoWindowsApp);
+                suffixId = i18n::StrId::VetoAppSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoWindowsService:
                 reason = strings.Get(i18n::StrId::VetoWindowsService);
+                suffixId = i18n::StrId::VetoAppSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoOutstandingOpen:
                 reason = strings.Get(i18n::StrId::VetoOutstandingOpen);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoDevice:
                 reason = strings.Get(i18n::StrId::VetoDevice);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
                 break;
             case PNP_VetoDriver:
                 reason = strings.Get(i18n::StrId::VetoDriver);
+                suffixId = i18n::StrId::VetoDriverSuffix;
+                hasSuffix = true;
                 break;
-            case PNP_VetoParentDevice:
-                reason = strings.Get(i18n::StrId::VetoParentDevice);
+            case kVetoIllegalDeviceRequest:
+                reason = strings.Get(i18n::StrId::VetoIllegalDeviceRequest);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
+                break;
+            case kVetoInsufficientPower:
+                reason = strings.Get(i18n::StrId::VetoInsufficientPower);
+                break;  // no accompanying text for this type
+            case kVetoNonDisableable:
+                reason = strings.Get(i18n::StrId::VetoNonDisableable);
+                suffixId = i18n::StrId::VetoDevicePathSuffix;
+                hasSuffix = true;
+                break;
+            case kVetoLegacyDriver:
+                reason = strings.Get(i18n::StrId::VetoLegacyDriver);
+                suffixId = i18n::StrId::VetoDriverSuffix;
+                hasSuffix = true;
+                break;
+            case kVetoInsufficientRights:
+                reason = strings.Get(i18n::StrId::VetoInsufficientRights);
+                break;  // no accompanying text for this type
+            case kVetoAlreadyRemoved:
+                reason = strings.Get(i18n::StrId::VetoAlreadyRemoved);
                 break;
             case PNP_VetoTypeUnknown:
             default:
                 reason = strings.Get(i18n::StrId::VetoUnknown);
                 break;
         }
-        if (!result.vetoApplication.empty()) {
+
+        // What PnP puts in the name buffer depends on the veto type: only
+        // PNP_VetoWindowsApp / PNP_VetoWindowsService / PNP_VetoLegacyDriver
+        // report an application, service or driver name. The others report a
+        // device instance path, and two report nothing at all - labelling all
+        // of them "used by" would misdescribe the device path.
+        if (hasSuffix && !result.vetoApplication.empty()) {
             reason += L"\n\n";
-            reason += strings.Format(i18n::StrId::VetoAppSuffix, result.vetoApplication);
+            reason += strings.Format(suffixId, result.vetoApplication);
         }
         return reason;
     }

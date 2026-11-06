@@ -19,6 +19,9 @@ public:
     bool Register(HWND hwnd);
     void Unregister() noexcept;
 
+    // The registration is tied to the window, so it must not outlive it.
+    ~DeviceNotifier() { Unregister(); }
+
     // True when a WM_DEVICECHANGE message should trigger a device rescan.
     static bool IsRelevantChange(UINT event, LPARAM data);
 

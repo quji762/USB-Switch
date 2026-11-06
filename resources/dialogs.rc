@@ -8,7 +8,9 @@
 // About
 /////////////////////////////////////////////////////////////////////////////
 
-IDD_ABOUT DIALOGEX 0, 0, 236, 98
+// 236x106: the OK button (y=90, height=14) ends at 104, so it needs 106 to
+// stay inside the client area.
+IDD_ABOUT DIALOGEX 0, 0, 236, 106
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About"
 FONT 9, "MS Shell Dlg", 400, 0, 0x1
@@ -24,7 +26,8 @@ END
 // Settings
 /////////////////////////////////////////////////////////////////////////////
 
-IDD_SETTINGS DIALOGEX 0, 0, 224, 96
+// 224x100: the buttons (y=84, height=14) end at 98.
+IDD_SETTINGS DIALOGEX 0, 0, 224, 100
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
 FONT 9, "MS Shell Dlg", 400, 0, 0x1

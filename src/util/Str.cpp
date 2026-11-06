@@ -53,7 +53,11 @@ std::wstring FormatV(const wchar_t* fmt, va_list args) {
     std::wstring out(kFormatLimit, L'\0');
     int written = std::vswprintf(out.data(), out.size(), fmt, args);
     if (written < 0) {
-        out.resize(out.find(L'\0'));
+        // vswprintf failed. Truncate at the first NUL, but guard against
+        // find() returning npos (nothing was written at all): resize(npos)
+        // would throw std::length_error.
+        const size_t terminator = out.find(L'\0');
+        out.resize(terminator == std::wstring::npos ? 0 : terminator);
         return out;
     }
     out.resize(static_cast<size_t>(written));
@@ -142,7 +146,8 @@ std::wstring FileSizeString(unsigned long long bytes) {
         ++unit;
     }
     if (unit == 0) {
-        // %ls, not %s: in the wide printf family %s expects a narrow string.
+        // %ls, not %s: in the wprintf family %s already means a wide string,
+        // and %ls states it explicitly.
         return str::Format(L"%llu %ls", bytes, units[0]);
     }
     // One decimal, dropping a trailing ".0" so "512.0 MB" prints as "512 MB".

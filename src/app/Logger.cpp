@@ -37,7 +37,8 @@ Logger& Logger::Instance() {
 }
 
 void Logger::Init(const std::wstring& directory, std::wstring_view baseName) {
-    Shutdown();
+    std::lock_guard<std::mutex> lock(mutex_);
+    CloseFileLocked();
     if (directory.empty()) return;
     CreateDirectories(directory);
     path_ = directory;
@@ -53,10 +54,15 @@ void Logger::Init(const std::wstring& directory, std::wstring_view baseName) {
     file_ = file;
     // Append to whatever is already there.
     SetFilePointer(file, 0, nullptr, FILE_END);
-    RotateIfNeeded();
+    RotateIfNeededLocked();
 }
 
 void Logger::Shutdown() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    CloseFileLocked();
+}
+
+void Logger::CloseFileLocked() {
     if (file_ != nullptr) {
         CloseHandle(static_cast<HANDLE>(file_));
         file_ = nullptr;
@@ -68,10 +74,15 @@ void Logger::Log(LogLevel level, const wchar_t* format, ...) {
     va_start(args, format);
     std::wstring message = str::FormatV(format, args);
     va_end(args);
-    WriteLine(str::Format(L"%ls [%ls] %ls", Timestamp().c_str(), LevelTag(level), message.c_str()));
+
+    // Format outside the lock: only the write needs to be serialized.
+    const std::wstring line =
+        str::Format(L"%ls [%ls] %ls", Timestamp().c_str(), LevelTag(level), message.c_str());
+    std::lock_guard<std::mutex> lock(mutex_);
+    WriteLineLocked(line);
 }
 
-void Logger::RotateIfNeeded() {
+void Logger::RotateIfNeededLocked() {
     if (file_ == nullptr) return;
     LARGE_INTEGER size{};
     if (!GetFileSizeEx(static_cast<HANDLE>(file_), &size)) return;
@@ -80,8 +91,19 @@ void Logger::RotateIfNeeded() {
     CloseHandle(static_cast<HANDLE>(file_));
     file_ = nullptr;
 
-    std::wstring backup = path_ + L".old";
-    MoveFileExW(path_.c_str(), backup.c_str(), MOVEFILE_REPLACE_EXISTING);
+    // If the move fails, keep the old log rather than recreating the file:
+    // CREATE_ALWAYS below would truncate it and destroy the previous contents.
+    const std::wstring backup = path_ + L".old";
+    if (MoveFileExW(path_.c_str(), backup.c_str(), MOVEFILE_REPLACE_EXISTING) == FALSE) {
+        // No QE_LOG_* here: Log() takes the same mutex this function is called
+        // under, and std::mutex is not recursive. OutputDebugString reaches a
+        // debugger without touching the log file.
+        OutputDebugStringW(str::Format(L"QuickEject: could not rotate %ls to %ls (%lu)",
+                                       path_.c_str(), backup.c_str(), GetLastError())
+                               .c_str());
+        path_.clear();
+        return;
+    }
 
     HANDLE file = CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -92,7 +114,7 @@ void Logger::RotateIfNeeded() {
     file_ = file;
 }
 
-void Logger::WriteLine(const std::wstring& line) {
+void Logger::WriteLineLocked(const std::wstring& line) {
     if (file_ == nullptr) return;
     std::string utf8 = str::ToUtf8(line);
     utf8.append("\r\n");

@@ -16,6 +16,7 @@
 // internal disk is never something this tool should touch.
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -33,10 +34,14 @@ public:
     // Re-enumerates everything, then invokes the change callback (if any).
     void Refresh();
 
-    const DeviceList& Devices() const noexcept { return devices_; }
+    // A snapshot copy, not a reference into devices_: Refresh() replaces the
+    // whole vector, so a reference would dangle across a rescan.
+    std::vector<Device> Devices() const;
 
-    const Device* FindByDriveLetter(std::wstring_view driveLetter) const;
-    const Device* FindByInstanceId(std::wstring_view instanceId) const;
+    // Lookups return a copy for the same reason - a pointer into devices_
+    // becomes invalid the moment Refresh() runs.
+    std::optional<Device> FindByDriveLetter(std::wstring_view driveLetter) const;
+    std::optional<Device> FindByInstanceId(std::wstring_view instanceId) const;
 
     static BusType ToBusType(ULONG storageBusType);
 
@@ -54,6 +59,9 @@ private:
         std::wstring product;
         std::wstring volumeLabel;
         std::wstring driveLetters;
+        // True when a mounted volume on this disk reports DRIVE_REMOVABLE. Used
+        // as a fallback for devices whose storage descriptor IOCTL failed.
+        bool volumeIsRemovable = false;
         uint64_t sizeBytes = 0;
     };
 

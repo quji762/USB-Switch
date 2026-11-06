@@ -205,6 +205,14 @@ void DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
         disk.deviceNumber = query.deviceNumber;
         disk.storageBusType = query.storageBusType;
         disk.removableMedia = query.removableMedia;
+        if (disk.storageBusType == 0xFFFFFFFF) {
+            // The descriptor IOCTL failed. Some real removable devices do not
+            // implement it, so the bus type stays unknown; the device is still
+            // kept when a mounted volume reports DRIVE_REMOVABLE (see
+            // AttachVolumes) rather than being dropped from the list.
+            QE_LOG_WARN(L"no storage descriptor for %ls; bus type unknown",
+                        detail->DevicePath);
+        }
         disk.vendor = str::FromUtf8(query.vendor);
         disk.product = str::FromUtf8(query.product);
 
@@ -261,6 +269,7 @@ void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
                 }
                 if (!disk.driveLetters.empty()) disk.driveLetters += L", ";
                 disk.driveLetters += path.substr(0, 2);
+                if (driveType == DRIVE_REMOVABLE) disk.volumeIsRemovable = true;
 
                 WCHAR label[MAX_PATH + 1] = L"";
                 if (GetVolumeInformationW(path.c_str(), label, MAX_PATH + 1, nullptr, nullptr, nullptr,
@@ -272,7 +281,9 @@ void DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
                 ULARGE_INTEGER totalBytes{};
                 if (GetDiskFreeSpaceExW(path.c_str(), nullptr, &totalBytes, nullptr) &&
                     totalBytes.QuadPart > 0) {
-                    disk.sizeBytes = static_cast<uint64_t>(totalBytes.QuadPart);
+                    // Sum across mount points: a multi-partition device shows
+                    // its total capacity, not just the last partition's.
+                    disk.sizeBytes += static_cast<uint64_t>(totalBytes.QuadPart);
                 }
                 break;  // one volume belongs to at most one disk candidate
             }
@@ -289,10 +300,22 @@ void DeviceManager::Refresh() {
     DeviceList next;
     next.reserve(disks.size());
     for (auto& disk : disks) {
+        // A disk that reports no instance id cannot be matched against the
+        // previous scan, so FindByInstanceId(L"") would collide with it and the
+        // hot-plug balloons would be wrong. Skip it.
+        if (disk.instanceId.empty()) {
+            QE_LOG_DEBUG(L"skipping a disk interface without an instance id");
+            continue;
+        }
+        if (disk.deviceNumber == 0xFFFFFFFF) continue;  // could not be identified
+
         const BusType busType = ToBusType(disk.storageBusType);
         const bool isUsb = busType == BusType::Usb;
-        if (!isUsb && !disk.removableMedia) continue;
-        if (disk.deviceNumber == 0xFFFFFFFF) continue;  // could not be identified
+        // Unknown bus type is not a reason to hide the device: a disk whose
+        // descriptor IOCTL failed is still kept when a mounted volume says it
+        // is removable. Fixed internal disks (SATA/NVMe, non-removable) stay
+        // out of the list.
+        if (!isUsb && !disk.removableMedia && !disk.volumeIsRemovable) continue;
 
         Device device;
         device.instanceId = disk.instanceId;
@@ -314,9 +337,11 @@ void DeviceManager::Refresh() {
     if (callback_) callback_();
 }
 
-const Device* DeviceManager::FindByDriveLetter(std::wstring_view driveLetter) const {
+std::vector<Device> DeviceManager::Devices() const { return devices_; }
+
+std::optional<Device> DeviceManager::FindByDriveLetter(std::wstring_view driveLetter) const {
     for (const auto& device : devices_) {
-        if (str::EqualsI(device.driveLetters, driveLetter)) return &device;
+        if (str::EqualsI(device.driveLetters, driveLetter)) return device;
         if (device.driveLetters.empty()) continue;
         // Multi-volume device: compare each entry.
         size_t start = 0;
@@ -326,19 +351,19 @@ const Device* DeviceManager::FindByDriveLetter(std::wstring_view driveLetter) co
                                           ? std::wstring_view(device.driveLetters).substr(start)
                                           : std::wstring_view(device.driveLetters).substr(start, comma - start);
             std::wstring trimmed = str::Trim(entry);
-            if (str::EqualsI(trimmed, driveLetter)) return &device;
+            if (str::EqualsI(trimmed, driveLetter)) return device;
             if (comma == std::wstring::npos) break;
             start = comma + 1;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 
-const Device* DeviceManager::FindByInstanceId(std::wstring_view instanceId) const {
+std::optional<Device> DeviceManager::FindByInstanceId(std::wstring_view instanceId) const {
     for (const auto& device : devices_) {
-        if (device.instanceId == instanceId) return &device;
+        if (device.instanceId == instanceId) return device;
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 }  // namespace qe

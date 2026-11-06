@@ -12,12 +12,19 @@ namespace {
 
 constexpr wchar_t kRunKeyPath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
-HKEY OpenRunKey(REGSAM access) {
+HKEY OpenRunKey(REGSAM access, bool createIfMissing) {
     HKEY key = nullptr;
-    LONG result = RegCreateKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, nullptr, REG_OPTION_NON_VOLATILE,
-                                  access, nullptr, &key, nullptr);
+    // A read-only query must not create the key: RegCreateKeyExW would leave an
+    // empty HKCU\...\Run behind as a side effect of merely asking whether the
+    // entry exists.
+    const LONG result = createIfMissing
+        ? RegCreateKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, nullptr, REG_OPTION_NON_VOLATILE,
+                          access, nullptr, &key, nullptr)
+        : RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, access, &key);
     if (result != ERROR_SUCCESS) {
-        QE_LOG_WARN(L"RegCreateKeyEx(%ls) failed: %ld", kRunKeyPath, result);
+        if (result != ERROR_FILE_NOT_FOUND) {
+            QE_LOG_WARN(L"open of %ls failed: %ld", kRunKeyPath, result);
+        }
         return nullptr;
     }
     return key;
@@ -33,7 +40,7 @@ std::wstring AutoStart::CommandLine() {
 }
 
 bool AutoStart::IsEnabled(std::wstring_view valueName) {
-    HKEY key = OpenRunKey(KEY_READ);
+    HKEY key = OpenRunKey(KEY_READ, /*createIfMissing=*/false);
     if (key == nullptr) return false;
     DWORD type = 0;
     DWORD size = 0;
@@ -43,7 +50,7 @@ bool AutoStart::IsEnabled(std::wstring_view valueName) {
 }
 
 bool AutoStart::SetEnabled(std::wstring_view valueName, const std::wstring& commandLine) {
-    HKEY key = OpenRunKey(KEY_WRITE);
+    HKEY key = OpenRunKey(KEY_WRITE, /*createIfMissing=*/true);
     if (key == nullptr) return false;
     const std::wstring name(valueName);
     DWORD bytes = static_cast<DWORD>((commandLine.size() + 1) * sizeof(wchar_t));
@@ -58,7 +65,7 @@ bool AutoStart::SetEnabled(std::wstring_view valueName, const std::wstring& comm
 }
 
 bool AutoStart::Clear(std::wstring_view valueName) {
-    HKEY key = OpenRunKey(KEY_WRITE);
+    HKEY key = OpenRunKey(KEY_WRITE, /*createIfMissing=*/true);
     if (key == nullptr) return false;
     const std::wstring name(valueName);
     LONG result = RegDeleteValueW(key, name.c_str());

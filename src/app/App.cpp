@@ -38,15 +38,16 @@ App::App(HINSTANCE instance) : instance_(instance) {}
 App::~App() { Logger::Instance().Shutdown(); }
 
 InitStatus App::Init() {
-    Logger::Instance().Init(LogDirectory());
+    // Logging, settings and localization are initialized by main() before the
+    // App is constructed (the command line paths need them too), so they are
+    // deliberately not repeated here: doing so would reopen the log file and
+    // re-read the settings, and the "settings loaded" line would appear twice
+    // in every GUI run.
 
     if (!singleInstance_.Acquire(L"QuickEject")) {
         SingleInstance::SignalExisting(MainWindow::kClassName);
         return InitStatus::AlreadyRunning;
     }
-
-    Settings::Instance().Load();
-    i18n::I18n::Instance().Init(Settings::Instance().Data().language);
 
     window_ = std::make_unique<MainWindow>(instance_);
     if (!window_->Create()) {
@@ -71,9 +72,18 @@ InitStatus App::Init() {
 int App::Run() {
     QE_LOG_INFO(L"entering message loop");
     MSG message{};
-    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+    for (;;) {
+        const BOOL result = GetMessageW(&message, nullptr, 0, 0);
+        if (result > 0) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+            continue;
+        }
+        if (result == 0) break;  // WM_QUIT
+        // result < 0 is an error (for example an invalid window handle); log it
+        // instead of exiting silently.
+        QE_LOG_ERROR(L"GetMessage failed: %lu", GetLastError());
+        break;
     }
     return static_cast<int>(message.wParam);
 }

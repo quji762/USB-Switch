@@ -25,6 +25,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         case WM_INITDIALOG: {
             const auto& strings = i18n::I18n::Instance();
             SetWindowTextW(hwnd, strings.Get(i18n::StrId::AboutTitle));
+            SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
             SetDlgItemTextW(hwnd, IDC_ABOUT_APPNAME, strings.Get(i18n::StrId::AboutAppName));
             SetDlgItemTextW(hwnd, IDC_ABOUT_DESC, strings.Get(i18n::StrId::AboutDescription));
             SetDlgItemTextW(hwnd, IDC_ABOUT_WEBSITE,
@@ -49,6 +50,8 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
         case WM_INITDIALOG: {
             const auto& strings = i18n::I18n::Instance();
             SetWindowTextW(hwnd, strings.Get(i18n::StrId::SettingsTitle));
+            SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogOk));
+            SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DialogCancel));
             SetDlgItemTextW(hwnd, IDC_SET_STARTUP, strings.Get(i18n::StrId::SettingsStartup));
             SetDlgItemTextW(hwnd, IDC_SET_NOTIFY, strings.Get(i18n::StrId::SettingsNotify));
             SetDlgItemTextW(hwnd, IDC_SET_CONFIRM, strings.Get(i18n::StrId::SettingsConfirm));

@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,8 @@ struct Options {
     bool listDevices = false;
     bool showHelp = false;
     bool showVersion = false;
-    bool minimized = false;  // accepted (Run key), no effect: always tray resident
+    bool usageError = false;  // unknown switch or missing argument
+    bool minimized = false;   // accepted (Run key), no effect: always tray resident
     std::wstring ejectTarget;  // drive letter ("E:") or PnP instance id
 };
 
@@ -37,6 +39,9 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
     Options options;
     for (int i = 1; i < argc; ++i) {
         const std::wstring argument = argv[i];
+        // Both "--eject E:" and "--eject=E:" are accepted.
+        const bool isEject = argument == L"--eject" || argument == L"-e" ||
+                             argument.rfind(L"--eject=", 0) == 0;
         if (argument == L"--list" || argument == L"-l") {
             options.listDevices = true;
         } else if (argument == L"--help" || argument == L"-h" || argument == L"/?") {
@@ -45,14 +50,16 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
             options.showVersion = true;
         } else if (argument == L"--minimized") {
             options.minimized = true;
-        } else if (argument == L"--eject" || argument == L"-e") {
-            if (i + 1 < argc) {
+        } else if (isEject) {
+            if (argument.rfind(L"--eject=", 0) == 0) {
+                options.ejectTarget = argument.substr(8);
+            } else if (i + 1 < argc) {
                 options.ejectTarget = argv[++i];
             } else {
-                options.showHelp = true;  // missing argument
+                options.usageError = true;  // missing argument
             }
         } else {
-            options.showHelp = true;  // unknown switch
+            options.usageError = true;  // unknown switch
         }
     }
     return options;
@@ -127,7 +134,7 @@ int RunListDevices() {
     const auto& strings = i18n::I18n::Instance();
     DeviceManager manager;
     manager.Refresh();
-    const DeviceList& devices = manager.Devices();
+    const std::vector<Device> devices = manager.Devices();
 
     PrintLine(strings.Get(i18n::StrId::CliListTitle));
     if (devices.empty()) {
@@ -158,14 +165,14 @@ int RunEject(const std::wstring& target) {
     DeviceManager manager;
     manager.Refresh();
 
-    const Device* device = nullptr;
+    std::optional<Device> device;
     const std::wstring drive = NormalizeDriveLetter(target);
     if (!drive.empty()) {
         device = manager.FindByDriveLetter(drive);
     } else {
         device = manager.FindByInstanceId(target);
     }
-    if (device == nullptr) {
+    if (!device) {
         PrintLine(strings.Format(i18n::StrId::CliUnknownDevice, target));
         return 2;
     }
@@ -201,16 +208,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     qe::i18n::I18n::Instance().Init(qe::Settings::Instance().Data().language);
 
     const bool commandLineAction =
-        options.listDevices || options.showHelp || options.showVersion || !options.ejectTarget.empty();
+        options.listDevices || options.showHelp || options.showVersion ||
+        options.usageError || !options.ejectTarget.empty();
     if (commandLineAction && !qe::AttachOutput()) {
         QE_LOG_WARN(L"no output handle; command line output is unavailable");
     }
 
     const auto& strings = qe::i18n::I18n::Instance();
     int exitCode = 0;
-    if (options.showHelp) {
+    if (options.showHelp || options.usageError) {
         qe::PrintLine(strings.Get(qe::i18n::StrId::CliUsage));
-        exitCode = 0;
+        // A usage error is not a successful run: --help is, a bad switch is not.
+        exitCode = options.usageError ? 2 : 0;
     } else if (options.showVersion) {
         qe::PrintLine(strings.Get(qe::i18n::StrId::CliVersion));
         exitCode = 0;

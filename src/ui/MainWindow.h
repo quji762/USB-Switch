@@ -49,7 +49,8 @@ private:
     void OnTrayNotify(LPARAM lParam);
     void OnDeviceChange(UINT event, LPARAM data);
     void OnRescanTimer();
-    void ShowTrayMenu();
+    // position == nullptr means "use the cursor" (mouse activation).
+    void ShowTrayMenu(const POINT* position = nullptr);
     void OnMenuCommand(UINT commandId);
     void RefreshDevices();
     void RebuildTrayTip();
@@ -57,6 +58,8 @@ private:
     void OpenSettings();
     void OpenAbout();
     HICON LoadTrayIcon() const;
+    static int GetTrayIconSize();
+    HICON LoadTrayIconAt(int size) const;
 
     HINSTANCE instance_ = nullptr;
     HWND hwnd_ = nullptr;

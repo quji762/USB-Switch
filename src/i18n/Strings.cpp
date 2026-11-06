@@ -61,9 +61,24 @@ const Entry kStrings[] = {
      L"The device or one of its child devices refused the removal."},
     {StrId::VetoDriver, L"有驱动程序正在占用该设备。",
      L"A driver is using the device."},
-    {StrId::VetoParentDevice, L"父设备阻止了移除，可能是读卡器或扩展坞上的其他接口正在使用中。",
-     L"The parent device refused the removal; another port on the same reader or dock may be in use."},
-    {StrId::VetoAppSuffix, L"（占用进程：%1）", L"(used by: %1)"},
+    {StrId::VetoIllegalDeviceRequest, L"设备拒绝了此次移除请求，可能它本身不支持热插拔。可尝试先卸载盘符再拔出。",
+     L"The device rejected the removal request; it may not support hot-unplugging. Try unmounting the drive letter first."},
+    {StrId::VetoInsufficientPower, L"系统电源策略阻止了移除，常见于通过 USB 集线器或扩展坞连接的设备。请改用设备自身的接口。",
+     L"A power policy blocked the removal, common for devices behind a USB hub or dock. Try the device's own port instead."},
+    {StrId::VetoNonDisableable, L"该设备被系统标记为不可禁用，因此无法安全移除。",
+     L"The device is marked as non-disableable, so it cannot be safely removed."},
+    {StrId::VetoLegacyDriver, L"有旧版驱动程序正在占用该设备。可在设备管理器中卸载对应设备后重试。",
+     L"A legacy driver is using the device. Uninstall the device in Device Manager and try again."},
+    {StrId::VetoInsufficientRights, L"权限不足，系统拒绝了移除请求。请以管理员身份运行 QuickEject 后重试。",
+     L"Insufficient rights: the system refused the removal. Run QuickEject as administrator and try again."},
+    {StrId::VetoAlreadyRemoved, L"该设备已经被移除或已断开连接，无需再次弹出。",
+     L"The device has already been removed or disconnected; no further action is needed."},
+    // The text PnP supplies alongside a veto is an application, service or
+    // driver name only for these three types.
+    {StrId::VetoAppSuffix, L"（占用：%1）", L"(used by: %1)"},
+    {StrId::VetoDriverSuffix, L"（驱动：%1）", L"(driver: %1)"},
+    // For the other types the same buffer holds a device instance path.
+    {StrId::VetoDevicePathSuffix, L"（相关设备：%1）", L"(related device: %1)"},
 
     // Settings dialog
     {StrId::SettingsTitle, L"QuickEject 设置", L"QuickEject Settings"},
@@ -76,6 +91,9 @@ const Entry kStrings[] = {
     {StrId::SettingsLanguageEn, L"English", L"English"},
     {StrId::SettingsNote, L"语言更改即时生效；本对话框的文字将在下次打开时更新。",
      L"Language changes apply immediately; this dialog updates next time you open it."},
+    // The .rc templates hardcode English for these; INITDIALOG overwrites them.
+    {StrId::DialogOk, L"确定", L"OK"},
+    {StrId::DialogCancel, L"取消", L"Cancel"},
 
     // About dialog
     {StrId::AboutTitle, L"关于 QuickEject", L"About QuickEject"},
