@@ -489,6 +489,7 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     POINT cursor{};
     if (position != nullptr) {
         cursor = *position;
+    const auto reconnectDisk = stoppedDisk_;
     } else {
         GetCursorPos(&cursor);
     }
@@ -504,34 +505,29 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
 
     if (!hwnd_ || command == 0) return;
     const auto id = static_cast<UINT>(command);
-    if (id == kCommandReconnect && !reconnectTarget.empty() && reconnectTarget == stoppedTarget_) {
+    if (id == kCommandReconnect && !reconnectTarget.empty() && reconnectTarget == stoppedTarget_ && reconnectDisk == stoppedDisk_) {
         const bool usePort = Ejector::HeldForEject(reconnectTarget) &&
                              ReconnectUsbPort(reconnectTarget, true) == ERROR_SUCCESS;
-        auto error = usePort ? ReconnectUsbPort(reconnectTarget, false) : Ejector::RestartStopped(stoppedDisk_, stoppedTarget_);
+        auto error = usePort ? ReconnectUsbPort(reconnectTarget, false) : Ejector::RestartStopped(reconnectDisk, reconnectTarget);
         if (error == ERROR_ACCESS_DENIED && Ejector::HeldForEject(reconnectTarget)) {
             if (MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectAdmin, stoppedName_).c_str(),
                             QUICKEJECT_APP_NAME_W, MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
-            if (stoppedTarget_ != reconnectTarget || !Ejector::HeldForEject(reconnectTarget)) {
+            if (stoppedTarget_ != reconnectTarget || stoppedDisk_ != reconnectDisk || !Ejector::HeldForEject(reconnectTarget)) {
                 RefreshDevices();
                 return;
             }
-            WCHAR system[MAX_PATH]{};
-            UINT length = GetSystemDirectoryW(system, MAX_PATH);
-            if (!length || length >= MAX_PATH || reconnectTarget.find_first_of(L"\"*?") != reconnectTarget.npos ||
-                reconnectTarget.back() == L'\\') error = ERROR_INVALID_DATA;
+            const auto safeId = [](const std::wstring& id) {
+                return !id.empty() && id.size() < MAX_DEVICE_ID_LEN &&
+                       id.find_first_of(L"\"*?") == id.npos && id.back() != L'\\';
+            };
+            std::wstring exe(32768, L'\0');
+            const DWORD copied = GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
+            if (!safeId(reconnectTarget) || !safeId(reconnectDisk)) error = ERROR_INVALID_DATA;
+            else if (!copied || copied >= exe.size()) error = copied ? ERROR_INSUFFICIENT_BUFFER : GetLastError();
             else {
-                std::wstring exe = std::wstring(system) + L"\\pnputil.exe";
-                if (usePort) {
-                    std::wstring self(32768, L'\0');
-                    const DWORD copied = GetModuleFileNameW(nullptr,self.data(),static_cast<DWORD>(self.size()));
-                    if (!copied || copied >= self.size()) {
-                        MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectTimeout), QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
-                        return;
-                    }
-                    self.resize(copied);
-                    exe = std::move(self);
-                }
-                const std::wstring args = (usePort ? L"--restart-held-usb \"" : L"/restart-device \"") + reconnectTarget + L"\"";
+                exe.resize(copied);
+                const std::wstring args = usePort ? L"--restart-held-usb \"" + reconnectTarget + L"\""
+                    : L"--restart-held-node \"" + reconnectDisk + L"\" \"" + reconnectTarget + L"\"";
                 SHELLEXECUTEINFOW run{};
                 run.cbSize = sizeof(run);
                 run.fMask = SEE_MASK_NOCLOSEPROCESS;

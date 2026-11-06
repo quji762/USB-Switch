@@ -97,7 +97,7 @@ if ($Runtime) {
         -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_CRT_SECURE_NO_WARNINGS `
         ($includeDirs | ForEach-Object { "-I$_" }) `
         -o $runtimeExe (Join-Path $root 'tests\device-runtime.cpp') @sources `
-        -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
+        -lsetupapi -luuid -lcfgmgr32 -lwevtapi -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
     if ($LASTEXITCODE -ne 0) { throw "runtime test build failed ($LASTEXITCODE)" }
     Write-Host "built $runtimeExe" -ForegroundColor Cyan
     & $runtimeExe

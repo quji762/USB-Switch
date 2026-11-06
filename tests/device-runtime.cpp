@@ -206,6 +206,14 @@ int main(int argc, char** argv) {
     snapshot[0].mountPaths.push_back(folderOnly.mountPaths[0]);
     Check(!qe::FindByMountPath(snapshot, folderOnly.mountPaths[0]),
           "conflicting mount identities cannot select a device");
+    snapshot[1].mountPaths.push_back(L"E:\\");
+    snapshot[1].mountPaths.push_back(L"F:\\");
+    const auto secondRoot = qe::FindByMountPath(snapshot, L"f:");
+    Check(secondRoot && secondRoot->instanceId == folderOnly.instanceId,
+          "a lowercase drive designator resolves the second volume of a disk");
+    snapshot[0].mountPaths.push_back(L"E:\\");
+    Check(!qe::FindByMountPath(snapshot, L"E:") && !qe::FindByMountPath(snapshot, L"e:\\"),
+          "ambiguous drive roots never select the first disk");
     const auto folderJson = qe::DeviceJson(folderOnly);
     const auto* folderPaths = folderJson.Find(L"mountPaths");
     Check(folderPaths && folderPaths->Size() == 1 &&
@@ -262,6 +270,12 @@ int main(int argc, char** argv) {
 
     // Drive-letter lookup must agree with what was reported.
     for (const qe::Device& device : devices) {
+        Check(qe::Ejector::RestartStopped(device.instanceId, device.instanceId) == ERROR_ALREADY_EXISTS,
+              "reconnect refuses a disk that returned online during authorization");
+        auto lowerId = device.instanceId;
+        for (auto& ch : lowerId) if (ch >= L'A' && ch <= L'Z') ch += L'a' - L'A';
+        auto byId = manager.FindByInstanceId(lowerId);
+        Check(byId && byId->instanceId == device.instanceId, "instance ID lookup ignores case");
         if (device.driveLetters.empty()) continue;
         const std::wstring first = device.driveLetters.substr(0, 2);
         const std::optional<qe::Device> found = manager.FindByDriveLetter(first);

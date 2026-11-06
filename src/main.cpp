@@ -254,6 +254,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
         LocalFree(argv);
         return static_cast<int>(result);
     }
+    if (argc == 4 && std::wstring_view(argv[1]) == L"--restart-held-node") {
+        const DWORD result = qe::Ejector::RestartStopped(argv[2], argv[3]);
+        LocalFree(argv);
+        return static_cast<int>(result);
+    }
     const qe::Options options = qe::ParseOptions(argc, argv);
 
     // Log and settings come first: even a CLI run should leave a trace and use

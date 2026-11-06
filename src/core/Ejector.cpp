@@ -5,6 +5,8 @@
 
 #include <iterator>
 #include <setupapi.h>
+#include <devguid.h>
+#include <devpkey.h>
 #include <cfg.h>
 #include "util/Win32.h"
 
@@ -126,6 +128,28 @@ DWORD Ejector::RestartStopped(const std::wstring& diskId, const std::wstring& ta
     SP_DEVINFO_DATA data{};
     data.cbSize = sizeof(data);
     if (!SetupDiOpenDeviceInfoW(info.Get(), targetId.c_str(), nullptr, 0, &data)) return GetLastError();
+    // Arguments cross a process boundary on elevation. Verify the recorded disk
+    // and the only other target we can have ejected: its USB storage parent.
+    SP_DEVINFO_DATA disk{};
+    disk.cbSize = sizeof(disk);
+    if (!SetupDiOpenDeviceInfoW(info.Get(), diskId.c_str(), nullptr, 0, &disk)) return GetLastError();
+    if (!IsEqualGUID(disk.ClassGuid, GUID_DEVCLASS_DISKDRIVE)) return ERROR_INVALID_DATA;
+    if (disk.DevInst != data.DevInst) {
+        WCHAR parent[MAX_DEVICE_ID_LEN]{}, service[64]{};
+        DEVPROPTYPE type{};
+        DWORD bytes{}, regType{};
+        if (!SetupDiGetDevicePropertyW(info.Get(), &disk, &DEVPKEY_Device_Parent, &type,
+                reinterpret_cast<BYTE*>(parent), sizeof(parent), &bytes, 0) ||
+            type != DEVPROP_TYPE_STRING || bytes < sizeof(WCHAR) || bytes > sizeof(parent) ||
+            bytes % sizeof(WCHAR) || parent[bytes / sizeof(WCHAR) - 1] ||
+            !str::EqualsI(parent, targetId)) return ERROR_DEVICE_NOT_CONNECTED;
+        if (!SetupDiGetDeviceRegistryPropertyW(info.Get(), &data, SPDRP_SERVICE, &regType,
+                reinterpret_cast<BYTE*>(service), sizeof(service), &bytes) ||
+            regType != REG_SZ || bytes < sizeof(WCHAR) || bytes > sizeof(service) ||
+            bytes % sizeof(WCHAR) || service[bytes / sizeof(WCHAR) - 1] ||
+            (!str::EqualsI(service, L"USBSTOR") && !str::EqualsI(service, L"UASPStor")))
+            return ERROR_NOT_SUPPORTED;
+    }
     SP_PROPCHANGE_PARAMS change{};
     change.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
     change.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;

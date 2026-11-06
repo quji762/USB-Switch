@@ -402,23 +402,8 @@ bool DeviceManager::Refresh() {
 std::vector<Device> DeviceManager::Devices() const { return devices_; }
 
 std::optional<Device> DeviceManager::FindByDriveLetter(std::wstring_view driveLetter) const {
-    for (const auto& device : devices_) {
-        if (str::EqualsI(device.driveLetters, driveLetter)) return device;
-        if (device.driveLetters.empty()) continue;
-        // Multi-volume device: compare each entry.
-        size_t start = 0;
-        for (;;) {
-            size_t comma = device.driveLetters.find(L',', start);
-            std::wstring_view entry = (comma == std::wstring::npos)
-                                          ? std::wstring_view(device.driveLetters).substr(start)
-                                          : std::wstring_view(device.driveLetters).substr(start, comma - start);
-            std::wstring trimmed = str::Trim(entry);
-            if (str::EqualsI(trimmed, driveLetter)) return device;
-            if (comma == std::wstring::npos) break;
-            start = comma + 1;
-        }
-    }
-    return std::nullopt;
+    if (driveLetter.size() != 2 || driveLetter[1] != L':') return std::nullopt;
+    return FindByMountPath(devices_, driveLetter);
 }
 
 std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_view input) {
@@ -433,7 +418,8 @@ std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_vi
         if (result.size() > 3 && result.back() == L'\\') result.pop_back();
         return result;
     };
-    const auto wanted = key(input);
+    const auto wanted = input.size() == 2 && input[1] == L':'
+                            ? key(std::wstring(input) + L"\\") : key(input);
     if (wanted.empty()) return std::nullopt;
     const Device* found = nullptr;
     for (const auto& device : devices) {
@@ -449,7 +435,7 @@ std::optional<Device> FindByMountPath(const DeviceList& devices, std::wstring_vi
 
 std::optional<Device> DeviceManager::FindByInstanceId(std::wstring_view instanceId) const {
     for (const auto& device : devices_) {
-        if (device.instanceId == instanceId) return device;
+        if (!instanceId.empty() && str::EqualsI(device.instanceId, instanceId)) return device;
     }
     return std::nullopt;
 }

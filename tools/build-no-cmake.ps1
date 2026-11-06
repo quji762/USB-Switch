@@ -126,7 +126,7 @@ foreach ($source in $sources) {
 # -static: self-contained binary, no MinGW runtime DLLs next to the exe.
 $exe = Join-Path $distDir 'usb-switch.exe'
 & $gxx -municode -mwindows -static -o $exe @objects `
-    -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32
+    -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lshell32 -lole32 -ladvapi32 -luser32 -lgdi32 -luuid
 if ($LASTEXITCODE -ne 0) { throw 'link failed' }
 
 Copy-Item (Join-Path $root 'README.md') (Join-Path $distDir 'README.md') -Force
