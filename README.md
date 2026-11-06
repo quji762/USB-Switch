@@ -208,6 +208,8 @@ python tools\check-strings.py    # 校验 i18n 表与枚举一致、占位符匹
 发行方还需要确定签名证书、发布渠道和更新策略；仓库目前没有
 提供签名证书，也没有实现自动更新。请勿将未完成这些验证的构建视为正式发行版。
 
+实机验收可先运行 `.\tests\hardware-eject.ps1 -Drive D -VolumeLabel 'ESD-USB' -PreflightOnly`，将盘符和卷标替换为专用测试盘的实际值。去掉 `-PreflightOnly` 后，脚本会在测试盘上新建临时文件，确认 Windows 拒绝弹出；关闭并确认文件已删除后，再按原实例 ID 请求安全弹出。它不属于常规构建步骤，不会由 CI 自动执行。
+
 ## 许可证 / License
 
 本项目以 GNU General Public License **version 3 only**（GPL-3.0-only）授权，
