@@ -42,10 +42,8 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'dist/usb-switch.exe'
-          $output = & $exe --version | Out-String
-          if ($LASTEXITCODE -ne 0 -or $output -notmatch 'usb-switch') { throw 'Version check failed' }
-          & $exe --eject= | Out-Null
-          if ($LASTEXITCODE -ne 2) { throw 'Empty eject target was not rejected' }
+          python tests/cli.py $exe
+          if ($LASTEXITCODE -ne 0) { throw 'CLI checks failed' }
           ./tests/migration.ps1 -Exe $exe
       - name: Build and test installer
         shell: pwsh

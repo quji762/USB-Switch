@@ -37,7 +37,9 @@ struct Options {
 
 Options ParseOptions(int argc, const wchar_t* const* argv) {
     Options options;
+    // Each invocation selects exactly one action (or starts the tray).
     for (int i = 1; i < argc; ++i) {
+        if (i != 1) options.usageError = true;
         const std::wstring argument = argv[i];
         // Both "--eject E:" and "--eject=E:" are accepted.
         const bool isEject = argument == L"--eject" || argument == L"-e" ||
@@ -53,12 +55,12 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
         } else if (isEject) {
             if (argument.rfind(L"--eject=", 0) == 0) {
                 options.ejectTarget = argument.substr(8);
-                if (options.ejectTarget.empty()) options.usageError = true;
             } else if (i + 1 < argc && argv[i + 1][0] != L'-') {
                 options.ejectTarget = argv[++i];
             } else {
                 options.usageError = true;  // missing argument
             }
+            if (str::Trim(options.ejectTarget).empty()) options.usageError = true;
         } else {
             options.usageError = true;  // unknown switch
         }

@@ -1,0 +1,20 @@
+"""Check the shipped Windows executable without requesting a real ejection."""
+from pathlib import Path
+import subprocess
+import sys
+
+exe = Path(sys.argv[1]).resolve()
+for args, status, marker in [
+    (["--version"], 0, "usb-switch"),
+    (["--help"], 0, "--list"),
+    (["--eject="], 2, "--list"),
+    (["--eject", ""], 2, "--list"),
+    (["--eject=   "], 2, "--list"),
+    (["--eject", "missing-device-A", "-e", "missing-device-B"], 2, "--list"),
+    (["--list", "--eject=missing-device"], 2, "--list"),
+    (["--version", "--list"], 2, "--list"),
+]:
+    run = subprocess.run([exe, *args], capture_output=True, encoding="utf-8", timeout=10)
+    if run.returncode != status or marker not in run.stdout.lower():
+        raise SystemExit(f"{args!r}: unexpected exit {run.returncode}, output {run.stdout!r}")
+print("CLI command and ambiguous-target checks passed")

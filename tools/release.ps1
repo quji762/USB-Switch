@@ -24,6 +24,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Resource check failed' }
     & .\tools\run-tests.ps1 -Runtime -ToolChain $ToolChain
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+    & python tests/cli.py dist/usb-switch.exe
+    if ($LASTEXITCODE -ne 0) { throw 'CLI checks failed' }
     & .\tests\migration.ps1
     if ($GuiSmoke) { & .\tests\gui-smoke.ps1 }
     if (!$InnoCompiler) {
