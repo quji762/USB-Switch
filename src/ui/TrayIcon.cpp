@@ -82,9 +82,9 @@ void TrayIcon::ShowBalloon(std::wstring_view title, std::wstring_view text, DWOR
     data_.szInfoTitle[0] = L'\0';
 }
 
-void TrayIcon::Recreate(HICON icon, std::wstring_view tooltip) {
-    if (data_.hWnd == nullptr) return;
-    Create(data_.hWnd, data_.uCallbackMessage, icon, tooltip);
+bool TrayIcon::Recreate(HICON icon, std::wstring_view tooltip) {
+    if (data_.hWnd == nullptr) return false;
+    return Create(data_.hWnd, data_.uCallbackMessage, icon, tooltip);
 }
 
 void TrayIcon::Remove() noexcept {

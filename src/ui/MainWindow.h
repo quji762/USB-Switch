@@ -54,6 +54,7 @@ private:
     void ShowTrayMenu(const POINT* position = nullptr);
     void OnMenuCommand(UINT commandId);
     void RefreshDevices();
+    void RestoreTrayIcon();
     void RebuildTrayTip();
     void EjectDevice(const Device& device);
     void OpenSettings();
@@ -73,8 +74,6 @@ private:
 
     // instance id -> display name of the previous scan, for "device removed".
     std::unordered_map<std::wstring, std::wstring> previousNames_;
-    // tray menu command id -> device instance id.
-    std::unordered_map<UINT, std::wstring> menuCommands_;
     // Suppresses connect/disconnect balloons for the initial scan at startup.
     bool firstScan_ = true;
     bool trayCreationFailed_ = false;

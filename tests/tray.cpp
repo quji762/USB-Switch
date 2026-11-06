@@ -28,6 +28,12 @@ int main() {
     calls.clear();
     icon.ShowBalloon(L"Removed", L"Safe to unplug");
     if (calls.size() != 1 || calls[0].text != L"Safe to unplug") return 4;
+    failAdd = true;
+    if (icon.Recreate(nullptr, L"recover") || icon.IsCreated()) return 5;
+    failAdd = false;
+    calls.clear();
+    if (!icon.Recreate(nullptr, L"recover") || !icon.IsCreated() || calls.size() != 2 ||
+        calls[0].operation != NIM_ADD || calls[1].operation != NIM_SETVERSION) return 6;
     icon.Remove();
     std::puts("Tray creation failure and notification delivery checks passed");
     return 0;

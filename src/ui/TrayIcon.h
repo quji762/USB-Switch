@@ -24,7 +24,7 @@ public:
     void UpdateTooltip(std::wstring_view tooltip);
     void ShowBalloon(std::wstring_view title, std::wstring_view text,
                      DWORD infoFlags = NIIF_INFO);
-    void Recreate(HICON icon, std::wstring_view tooltip);
+    bool Recreate(HICON icon, std::wstring_view tooltip);
     void Remove() noexcept;
 
     bool IsCreated() const noexcept { return created_; }

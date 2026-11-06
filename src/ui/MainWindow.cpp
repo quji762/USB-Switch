@@ -28,9 +28,8 @@ constexpr wchar_t kIconResourceName[] = L"USBSwitchIcon";
 // SingleInstance for "another instance started".
 constexpr UINT kTrayMessage = WM_APP + 2;
 
-// Tray menu command ids. Device ids are allocated per menu build and mapped
-// back to devices through menuCommands_.
-constexpr UINT kDeviceCommandBase = 0x1001;
+// Device commands index the snapshot belonging to this popup.
+constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
 constexpr UINT kCommandSettings = 0x2002;
 constexpr UINT kCommandAbout = 0x2003;
@@ -39,6 +38,7 @@ constexpr UINT kCommandExit = 0x2004;
 // One physical insertion produces several WM_DEVICECHANGE messages (disk
 // interface, volume, device tree); a short timer collapses them into one scan.
 constexpr UINT_PTR kRescanTimerId = 1;
+constexpr UINT_PTR kTrayRetryTimerId = 2;
 constexpr UINT kRescanDelayMs = 250;
 
 }  // namespace
@@ -106,7 +106,8 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         case WM_CREATE:
             return OnCreate(hwnd) ? 0 : -1;
         case WM_TIMER:
-            OnRescanTimer();
+            if (wParam == kRescanTimerId) OnRescanTimer();
+            else if (wParam == kTrayRetryTimerId) RestoreTrayIcon();
             return 0;
         case WM_DPICHANGED: {
             // The manifest declares PerMonitorV2, so the icon is reloaded at the
@@ -144,8 +145,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     // device-count suffix in the tooltip (Recreate alone would lose it).
     if (taskbarCreatedMessage_ != 0 && message == taskbarCreatedMessage_) {
         QE_LOG_INFO(L"taskbar restarted; recreating tray icon");
-        tray_.Recreate(icon_, i18n::I18n::Instance().Get(i18n::StrId::AppTooltip));
-        RebuildTrayTip();
+        RestoreTrayIcon();
         return 0;
     }
     return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -279,6 +279,16 @@ void MainWindow::RefreshDevices() {
     RebuildTrayTip();
 }
 
+void MainWindow::RestoreTrayIcon() {
+    if (tray_.Recreate(icon_, i18n::I18n::Instance().Get(i18n::StrId::AppTooltip))) {
+        KillTimer(hwnd_, kTrayRetryTimerId);
+        RebuildTrayTip();
+    } else {
+        // Explorer may broadcast TaskbarCreated before it accepts icon requests.
+        SetTimer(hwnd_, kTrayRetryTimerId, 5000, nullptr);
+    }
+}
+
 void MainWindow::RebuildTrayTip() {
     const auto& strings = i18n::I18n::Instance();
     std::wstring tooltip = strings.Get(i18n::StrId::AppTooltip);
@@ -296,17 +306,21 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         return;
     }
 
-    menuCommands_.clear();
     UINT itemPosition = 0;
-    const auto& devices = devices_.Devices();
+    const auto devices = devices_.Devices();
     if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
         for (const auto& device : devices) {
             const UINT commandId = kDeviceCommandBase + itemPosition;
-            menuCommands_[commandId] = device.instanceId;
+            // Win32 treats a single ampersand as a keyboard mnemonic.
+            std::wstring menuName;
+            for (wchar_t ch : device.displayName) {
+                if (ch == L'&') menuName += ch;
+                menuName += ch;
+            }
             AppendMenuW(menu, MF_STRING, commandId,
-                        strings.Format(i18n::StrId::MenuEjectItem, device.displayName).c_str());
+                        strings.Format(i18n::StrId::MenuEjectItem, menuName).c_str());
             ++itemPosition;
         }
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -332,12 +346,17 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     PostMessageW(hwnd_, WM_NULL, 0, 0);
     DestroyMenu(menu);
 
-    if (command != 0) OnMenuCommand(static_cast<UINT>(command));
+    if (!hwnd_ || command == 0) return;
+    const auto id = static_cast<UINT>(command);
+    if (id >= kDeviceCommandBase) {
+        const auto index = id - kDeviceCommandBase;
+        if (index < devices.size()) EjectDevice(devices[index]);
+    } else {
+        OnMenuCommand(id);
+    }
 }
 
 void MainWindow::OnMenuCommand(UINT commandId) {
-    // The fixed commands must be matched first: their ids are numerically
-    // larger than kDeviceCommandBase, so a range test first would swallow them.
     switch (commandId) {
         case kCommandRefresh:
             RefreshDevices();
@@ -355,17 +374,6 @@ void MainWindow::OnMenuCommand(UINT commandId) {
             break;
     }
 
-    if (commandId >= kDeviceCommandBase) {
-        const auto it = menuCommands_.find(commandId);
-        if (it == menuCommands_.end()) return;
-        // A copy: the menu can stay open while a rescan replaces devices_.
-        const std::optional<Device> device = devices_.FindByInstanceId(it->second);
-        if (!device) {
-            RefreshDevices();  // the device disappeared between menu and click
-            return;
-        }
-        EjectDevice(*device);
-    }
 }
 
 void MainWindow::EjectDevice(const Device& device) {
@@ -380,8 +388,8 @@ void MainWindow::EjectDevice(const Device& device) {
 
     if (settings.confirmBeforeEject) {
         const std::wstring text = strings.Format(i18n::StrId::ConfirmEjectText, displayName);
-        if (MessageBoxW(nullptr, text.c_str(), strings.Get(i18n::StrId::ConfirmEjectTitle),
-                        MB_YESNO | MB_ICONQUESTION | MB_TOPMOST) != IDYES) {
+        if (MessageBoxW(hwnd_, text.c_str(), strings.Get(i18n::StrId::ConfirmEjectTitle),
+                        MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION | MB_TOPMOST) != IDYES) {
             return;
         }
     }
