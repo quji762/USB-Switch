@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 #include "app/Logger.h"
 #include "app/AutoStart.h"
@@ -53,6 +54,8 @@ constexpr DEVINST disk = 10, transport = 20;
 DEVINST firstChild = disk;
 CONFIGRET siblingStatus = CR_NO_SUCH_DEVNODE;
 std::wstring service = L"USBSTOR";
+std::wstring siblingId = L"USBSTOR\\Other&Ven_WD&Prod_SES_Device&Rev_2003\\123&1";
+CONFIGRET siblingChildStatus = CR_NO_SUCH_DEVNODE;
 DWORD caps = CM_DEVCAP_REMOVABLE;
 
 CONFIGRET WINAPI Parent(PDEVINST node, DEVINST device, ULONG) {
@@ -60,12 +63,19 @@ CONFIGRET WINAPI Parent(PDEVINST node, DEVINST device, ULONG) {
     return device == disk ? CR_SUCCESS : CR_FAILURE;
 }
 CONFIGRET WINAPI Child(PDEVINST node, DEVINST device, ULONG) {
+    if (device == 11) return siblingChildStatus;
     *node = firstChild;
     return device == transport ? CR_SUCCESS : CR_FAILURE;
 }
 CONFIGRET WINAPI Sibling(PDEVINST node, DEVINST device, ULONG) {
     *node = 11;
+    if (device == 11) return CR_NO_SUCH_DEVNODE;
     return device == disk ? siblingStatus : CR_FAILURE;
+}
+CONFIGRET WINAPI Id(DEVINST node, PWSTR buffer, ULONG length, ULONG) {
+    if (node != 11 || siblingId.size() + 1 > length) return CR_FAILURE;
+    memcpy(buffer, siblingId.c_str(), (siblingId.size() + 1) * sizeof(wchar_t));
+    return CR_SUCCESS;
 }
 CONFIGRET WINAPI Property(DEVINST device, ULONG prop, PULONG type, PVOID buffer, PULONG bytes, ULONG) {
     if (device != transport) return CR_FAILURE;
@@ -81,12 +91,17 @@ CONFIGRET WINAPI Property(DEVINST device, ULONG prop, PULONG type, PVOID buffer,
     return CR_SUCCESS;
 }
 void Verify() {
-    const qe::detail::RemovalTopologyApi api{Parent, Child, Sibling, Property};
+    const qe::detail::RemovalTopologyApi api{Parent, Child, Sibling, Property, Id};
     auto target = [&] { return qe::detail::RemovalTarget(disk, api); };
     Check(target() == transport, "single USBSTOR disk selects removable transport");
     service = L"UASPStor";
     Check(target() == transport, "single UASP disk selects removable transport");
     siblingStatus = CR_SUCCESS;
+    Check(target() == transport, "WD SES companion permits selecting its USB transport");
+    siblingChildStatus = CR_SUCCESS;
+    Check(target() == disk, "SES companion with children cannot promote removal");
+    siblingChildStatus = CR_NO_SUCH_DEVNODE;
+    siblingId = L"USBSTOR\\Disk&Ven_Other\\123";
     Check(target() == disk, "second slot prevents transport ejection");
     siblingStatus = CR_ACCESS_DENIED;
     Check(target() == disk, "failed sibling lookup cannot promote request");
@@ -141,11 +156,45 @@ int main(int argc, char** argv) {
     input.aliases[L"id-a"] = L"Backup";
     input.hiddenDevices[L"USBSTOR\\reader&0"] = L"Card (D:)";
     input.menuHotkey = L"J";
+    input.language = L"zh";
+    input.appearance = L"dark";
+    input.runAtStartup = true;
+    input.showNotifications = false;
+    input.confirmBeforeEject = false;
+    input.showTemperature = false;
+    input.showPowerOnHours = true;
+    input.showPowerCycles = true;
+    input.showReallocated = true;
+    input.showPendingSectors = true;
     const auto saved = qe::AppSettings::FromJson(input.ToJson());
+    Check(saved.language == L"zh" && saved.appearance == L"dark" && saved.runAtStartup &&
+          !saved.showNotifications && !saved.confirmBeforeEject && !saved.showTemperature &&
+          saved.showPowerOnHours && saved.showPowerCycles && saved.showReallocated &&
+          saved.showPendingSectors,
+          "every settings field survives a save and reload round trip");
     Check(saved.hiddenDevices.count(L"usbstor\\reader&0") && !saved.hiddenDevices.count(L"usbstor\\reader&1"),
           "hidden slot settings survive reload without hiding its sibling");
     Check(saved.menuHotkey == L"J" && saved.DeviceName(L"id-a", L"E:").find(L"Backup") == 0 &&
           saved.DeviceName(L"id-b", L"D:") == L"D:", "alias follows device identity and hotkey persists");
+
+    // A settings file written by a newer version may carry keys this build
+    // does not know; they must survive a reload instead of being dropped.
+    qe::json::Value forward;
+    Check(qe::json::Value::Parse(
+              L"{\"version\": 9, \"language\": \"en\", \"futureFeature\": {\"enabled\": true}, "
+              L"\"smartDisplay\": {\"temperature\": true, \"futureMetric\": 7}}",
+              forward) && forward.IsObject(),
+          "settings parse accepts keys a newer version writes");
+    const auto carried = qe::AppSettings::FromJson(forward).ToJson();
+    const qe::json::Value* kept = carried.Find(L"futureFeature");
+    Check(kept && kept->IsObject() && kept->Find(L"enabled") && kept->Find(L"enabled")->AsBool(),
+          "unknown top-level settings keys survive a reload and are written back");
+    const qe::json::Value* carriedSmart = carried.Find(L"smartDisplay");
+    Check(carriedSmart && carriedSmart->GetBool(L"temperature", false) &&
+              carriedSmart->GetNumber(L"futureMetric", 0) == 7,
+          "unknown smartDisplay members survive a reload and are written back");
+    Check(carried.GetString(L"language", L"") == L"en" && carried.GetNumber(L"version", 0) == 1,
+          "known settings keys win and the schema version is stamped");
     topology::Verify();
     WriteOut("Device enumeration (runtime)\n");
 
@@ -185,6 +234,38 @@ int main(int argc, char** argv) {
     fs::remove(settingsPath);
     Check(fs::is_empty(root), "failed saves clean up their own temporary files");
     fs::remove(root);
+
+    // Settings::Load() derives its path from %APPDATA%; point the variable at
+    // a scratch profile so a corrupt file can be exercised without touching
+    // real settings.
+    const DWORD savedAppDataChars = GetEnvironmentVariableW(L"APPDATA", nullptr, 0);
+    std::wstring savedAppData;
+    if (savedAppDataChars > 0) {
+        savedAppData.resize(savedAppDataChars);
+        GetEnvironmentVariableW(L"APPDATA", savedAppData.data(), savedAppDataChars);
+        savedAppData.resize(savedAppDataChars - 1);
+    }
+    const auto corruptRoot = fs::temp_directory_path() /
+        (L"USB-Switch-corrupt-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+         std::to_wstring(GetTickCount64()));
+    if (!fs::create_directories(corruptRoot / L"USB-Switch")) return 1;
+    const auto corruptSettings = corruptRoot / L"USB-Switch" / L"settings.json";
+    const char corruptBytes[] = "{\"language\": \"zh\"";  // truncated: not parseable JSON
+    { std::ofstream seed(corruptSettings, std::ios::binary); seed << corruptBytes; }
+    SetEnvironmentVariableW(L"APPDATA", corruptRoot.c_str());
+    qe::Settings::Instance().Load();
+    SetEnvironmentVariableW(L"APPDATA", savedAppData.empty() ? nullptr : savedAppData.c_str());
+    const auto corruptBackup = corruptRoot / L"USB-Switch" / L"settings.json.corrupt";
+    Check(fs::exists(corruptBackup) && qe::Settings::Instance().Data().language == L"auto",
+          "unreadable settings are backed up before Load falls back to defaults");
+    std::string backedUp;
+    {
+        std::ifstream backupIn(corruptBackup, std::ios::binary);
+        backedUp.assign((std::istreambuf_iterator<char>(backupIn)), std::istreambuf_iterator<char>());
+    }  // close the stream: remove_all below cannot delete an open file
+    Check(backedUp == corruptBytes, "the corrupt-settings backup keeps the original unreadable bytes");
+    fs::remove_all(corruptRoot);
+
     qe::Logger::Instance().Init(L"");  // no log file: this is a test, not the app
     qe::Settings::Instance().Load();
     qe::i18n::I18n::Instance().Init(L"en");
@@ -330,9 +411,21 @@ int main(int argc, char** argv) {
     Check(!refusal.CanRetry(), "failed device lookup does not offer retry");
     // Ejector must refuse a bogus instance rather than misbehave.
     const qe::EjectResult bogus = qe::Ejector::Eject(L"USB-Switch\\NONEXISTENT\\TEST");
-    Check(bogus.status == qe::EjectStatus::Ineligible, "unlisted instance is rejected before the PnP eject request");
+    // A machine whose enumeration is broken yields ScanUnavailable; the
+    // invariant under test is that no PnP eject request was attempted.
+    Check(bogus.status == qe::EjectStatus::Ineligible || bogus.status == qe::EjectStatus::ScanUnavailable,
+          "unlisted instance is rejected before the PnP eject request");
     Check(!bogus.Succeeded(), "ejecting a nonexistent instance fails cleanly");
     Check(!qe::Ejector::Describe(bogus).empty(), "a failed eject has an explanation");
+
+    // A failed pre-request rescan reports as an enumeration problem, not as an
+    // un-ejectable device.
+    qe::EjectResult staleScan;
+    staleScan.status = qe::EjectStatus::ScanUnavailable;
+    const auto scanJson = qe::EjectJson(staleScan, L"test-id");
+    Check(scanJson.GetString(L"status", L"") == L"enumeration_failed" && !scanJson.GetBool(L"retryable", true) &&
+          !qe::Ejector::Describe(staleScan).empty(),
+          "a failed rescan is reported as enumeration_failed, not ineligible");
 
     const std::wstring testRunName = L"USB-Switch-test-" + std::to_wstring(GetCurrentProcessId());
     using Startup = qe::AutoStart;
@@ -350,6 +443,26 @@ int main(int argc, char** argv) {
               Startup::Inspect(testRunName, owned) == Startup::Entry::Missing, "matching startup entry is removed");
     } else {
         Check(false, "temporary startup entry created");
+    }
+
+    // A stale entry from an older copy at another path is adopted when the
+    // executable name matches; a foreign program is refused (tested above).
+    const std::wstring staleRunName = testRunName + L"-stale";
+    const std::wstring stale = L"\"C:\\previous-install\\test-owned.exe\"";
+    if (Startup::Inspect(staleRunName, stale) != Startup::Entry::Missing) {
+        Check(false, "temporary stale startup entry name is unused");
+    } else if (Startup::SetEnabled(staleRunName, stale) &&
+               Startup::Inspect(staleRunName, stale) == Startup::Entry::Owned) {
+        Check(Startup::Inspect(staleRunName, owned) == Startup::Entry::Other,
+              "the stale entry is foreign to the current command line");
+        Check(Startup::SetEnabled(staleRunName, owned) &&
+              Startup::Inspect(staleRunName, owned) == Startup::Entry::Owned,
+              "a stale entry naming this executable is adopted");
+        Check(Startup::ClearIfMatches(staleRunName, owned) &&
+              Startup::Inspect(staleRunName, owned) == Startup::Entry::Missing,
+              "an adopted startup entry is removed like an owned one");
+    } else {
+        Check(false, "temporary stale startup entry created");
     }
 
     printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
