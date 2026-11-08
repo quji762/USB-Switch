@@ -8,6 +8,7 @@
 #include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include <algorithm>
+#include <unordered_map>
 
 #include "app/AppInfo.h"
 #include "app/Logger.h"
@@ -18,6 +19,7 @@
 #include "core/OpenFiles.h"
 #include "core/UsbPort.h"
 #include "core/RestartProcess.h"
+#include "core/SmartInfo.h"
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "resource.h"
@@ -40,6 +42,7 @@ constexpr UINT kDeviceCommandBase = 0x3000;
 constexpr UINT kCommandRefresh = 0x2001;
 constexpr UINT kCommandReconnect = 0x2006;
 constexpr UINT kCommandSettings = 0x2002;
+constexpr UINT kCommandDevices = 0x2007;
 constexpr UINT kAliasBase = 0x100000;
 constexpr UINT kMediaBase = 0x200000;
 constexpr UINT kHideBase = 0x300000;
@@ -191,7 +194,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         case WM_DPICHANGED: {
             // The manifest declares PerMonitorV2, so the icon is reloaded at the
             // new DPI instead of staying at the size captured at startup.
-            const UINT dpi = HIWORD(wParam);
+            const UINT dpi = LOWORD(wParam);
             const int size = dpi > 0 ? MulDiv(16, static_cast<int>(dpi), 96) : 16;
             if (icon_ != nullptr && ownsIcon_) {
                 DestroyIcon(icon_);
@@ -318,7 +321,10 @@ void MainWindow::OnTrayNotify(WPARAM wParam, LPARAM lParam) {
 void MainWindow::OnDeviceChange(UINT event, LPARAM data) {
     if (!DeviceNotifier::IsRelevantChange(event, data)) return;
     QE_LOG_DEBUG(L"device change: %ls", DeviceNotifier::DescribeChange(event, data).c_str());
-    SetTimer(hwnd_, kRescanTimerId, kRescanDelayMs, nullptr);
+    // While the failure backoff schedules the next scan, do not reset its
+    // timer: a device-event storm would otherwise pin the retries at the
+    // shortest interval. The pending backoff timer already covers this event.
+    if (!scanRetryMs_) SetTimer(hwnd_, kRescanTimerId, kRescanDelayMs, nullptr);
 }
 
 void MainWindow::OnRescanTimer() {
@@ -342,12 +348,24 @@ void MainWindow::RefreshDevices() {
     scanRetryMs_ = 0;
     KillTimer(hwnd_, kRescanTimerId);
     const auto snapshot = devices_.Devices();
-    if (!stoppedDisk_.empty() && devices_.FindByInstanceId(stoppedDisk_)) {
-        restartProcess_.Reset();
-        stoppedDisk_.clear();
-        stoppedTarget_.clear();
-        reconnectDeadline_ = 0;
-        KillTimer(hwnd_, kReconnectTimer);
+    if (!stoppedDisk_.empty()) {
+        if (devices_.FindByInstanceId(stoppedDisk_)) {
+            // Right after the eject request the disk can still be enumerated
+            // for a moment; clearing the reconnect record then would remove
+            // the menu entry before it is ever shown. Only a scan that first
+            // saw the disk gone confirms it is really detached - unless a
+            // reconnect is in flight, where reappearance means success.
+            if (stoppedSeenAbsent_ || reconnectDeadline_) {
+                restartProcess_.Reset();
+                stoppedDisk_.clear();
+                stoppedTarget_.clear();
+                reconnectDeadline_ = 0;
+                stoppedSeenAbsent_ = false;
+                KillTimer(hwnd_, kReconnectTimer);
+            }
+        } else {
+            stoppedSeenAbsent_ = true;
+        }
     }
     if (!firstScan_) {
         for (const auto& device : snapshot) {
@@ -424,7 +442,6 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         return;
     }
 
-    UINT itemPosition = 0;
     HMENU aliases = nullptr;
     HMENU media = nullptr;
     HMENU hide = nullptr;
@@ -437,13 +454,19 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     } else if (devices.empty()) {
         AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::MenuNoDevices));
     } else {
+        std::unordered_map<std::wstring, size_t> readerCount;
         for (const auto& device : devices) {
-            const auto index = itemPosition++;
-            if (hidden.count(str::Lower(device.instanceId))) continue;
+            if (device.readerId.empty() || hidden.count(str::Lower(device.instanceId))) continue;
+            ++readerCount[device.readerId];
+        }
+        std::unordered_map<std::wstring, bool> emitted;
+        auto appendDevice = [&](HMENU target, const Device& device, size_t index) {
+            if (hidden.count(str::Lower(device.instanceId))) return;
             const auto menuName = MenuLabel(preferences.DeviceName(device.instanceId, device.displayName));
             auto title = device.mediaState == MediaState::Empty ? i18n::StrId::EmptySlot :
                          device.mediaState == MediaState::NotReady ? i18n::StrId::SlotNotReady : i18n::StrId::MenuEjectItem;
-            AppendMenuW(menu, MF_STRING | (device.MediaUnavailable() ? MF_GRAYED : 0), kDeviceCommandBase + index,
+            AppendMenuW(target, MF_STRING | (device.MediaUnavailable() ? MF_GRAYED : 0),
+                        kDeviceCommandBase + static_cast<UINT>(index),
                         strings.Format(title, menuName).c_str());
             if (!aliases) aliases = CreatePopupMenu();
             if (aliases) AppendMenuW(aliases, MF_STRING, kAliasBase + index, menuName.c_str());
@@ -455,6 +478,31 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                 if (!media) media = CreatePopupMenu();
                 if (media) AppendMenuW(media, MF_STRING, kMediaBase + index, menuName.c_str());
             }
+        };
+        for (size_t index = 0; index < devices.size(); ++index) {
+            const auto& device = devices[index];
+            if (hidden.count(str::Lower(device.instanceId))) continue;
+            const bool reader = !device.readerId.empty() && readerCount[device.readerId] >= 2;
+            if (!reader) {
+                appendDevice(menu, device, index);
+                continue;
+            }
+            if (emitted[device.readerId]) continue;
+            emitted[device.readerId] = true;
+            HMENU slots = CreatePopupMenu();
+            if (!slots) {
+                appendDevice(menu, device, index);
+                continue;
+            }
+            for (size_t slot = index; slot < devices.size(); ++slot) {
+                if (devices[slot].readerId == device.readerId)
+                    appendDevice(slots, devices[slot], slot);
+            }
+            const std::wstring title = device.readerName.empty()
+                                           ? std::wstring(strings.Get(i18n::StrId::CardReader))
+                                           : device.readerName;
+            if (!AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(slots), MenuLabel(title).c_str()))
+                DestroyMenu(slots);
         }
         if (!GetMenuItemCount(menu))
             AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, strings.Get(i18n::StrId::AllHidden));
@@ -488,14 +536,12 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
     }
     if (manage && !AppendMenuW(menu, MF_POPUP,reinterpret_cast<UINT_PTR>(manage),strings.Get(i18n::StrId::ManageDevices)))
         DestroyMenu(manage);
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, kCommandDevices, strings.Get(i18n::StrId::MenuConnected));
     const auto reconnectTarget = stoppedTarget_;
     const auto reconnectDisk = stoppedDisk_;
     if (!reconnectTarget.empty() && !hidden.count(str::Lower(stoppedDisk_))) {
-        std::wstring caption;
-        for (wchar_t ch : strings.Format(i18n::StrId::ReconnectDevice, stoppedName_)) {
-            if (ch == L'&') caption += ch;
-            caption += ch;
-        }
+        const std::wstring caption = MenuLabel(strings.Format(i18n::StrId::ReconnectDevice, stoppedName_));
         AppendMenuW(menu, MF_STRING | (reconnectDeadline_ ? MF_GRAYED : 0), kCommandReconnect, caption.c_str());
     }
     AppendMenuW(menu, MF_STRING, kCommandRefresh, strings.Get(i18n::StrId::MenuRefresh));
@@ -605,6 +651,9 @@ void MainWindow::OnMenuCommand(UINT commandId) {
         case kCommandRefresh:
             RefreshDevices();
             return;
+        case kCommandDevices:
+            OpenDevices();
+            return;
         case kCommandSettings:
             OpenSettings();
             return;
@@ -634,14 +683,15 @@ void MainWindow::EjectMedium(const Device& device) {
     const auto& strings = i18n::I18n::Instance();
     using i18n::StrId;
     const auto name = Settings::Instance().Data().DeviceName(device.instanceId, device.displayName);
-    if (MessageBoxW(hwnd_, strings.Format(StrId::MediaConfirm, name).c_str(), strings.Get(StrId::MenuMedia),
+    const HWND owner = PromptOwner();
+    if (MessageBoxW(owner, strings.Format(StrId::MediaConfirm, name).c_str(), strings.Get(StrId::MenuMedia),
                     MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES || !hwnd_) return;
     DeviceManager live;
     auto current = live.Refresh() ? live.FindByInstanceId(device.instanceId) : std::nullopt;
     if (!current || current->volumeInterfaces.size() != device.volumeInterfaces.size() ||
         !std::is_permutation(current->volumeInterfaces.begin(), current->volumeInterfaces.end(),
                              device.volumeInterfaces.begin())) {
-        MessageBoxW(hwnd_, strings.Get(StrId::MediaChanged), strings.Get(StrId::MenuMedia), MB_ICONWARNING);
+        MessageBoxW(owner, strings.Get(StrId::MediaChanged), strings.Get(StrId::MenuMedia), MB_ICONWARNING);
     } else {
         const auto result = EjectMedia(*current);
         if (result.error) {
@@ -649,7 +699,7 @@ void MainWindow::EjectMedium(const Device& device) {
             auto reason = str::Win32ErrorMessage(result.error);
             if (std::wstring_view(result.stage) == L"lock_volume")
                 reason = std::wstring(strings.Get(StrId::MediaLockFailed)) + L"\n" + reason;
-            MessageBoxW(hwnd_, strings.Format(StrId::EjectFailText, name, reason).c_str(),
+            MessageBoxW(owner, strings.Format(StrId::EjectFailText, name, reason).c_str(),
                         strings.Get(StrId::MenuMedia), MB_ICONWARNING);
         } else if (Settings::Instance().Data().showNotifications) {
             tray_.ShowBalloon(strings.Get(StrId::MenuMedia), strings.Format(StrId::MediaOk, name), NIIF_INFO);
@@ -667,10 +717,11 @@ void MainWindow::EjectDevice(const Device& device) {
     // eject request instead of relying on the cached device-node handle.
     const std::wstring instanceId = device.instanceId;
     const std::wstring displayName = settings.DeviceName(instanceId, device.displayName);
+    const HWND owner = PromptOwner();
 
     if (settings.confirmBeforeEject) {
         const std::wstring text = strings.Format(i18n::StrId::ConfirmEjectText, displayName);
-        if (MessageBoxW(hwnd_, text.c_str(), strings.Get(i18n::StrId::ConfirmEjectTitle),
+        if (MessageBoxW(owner, text.c_str(), strings.Get(i18n::StrId::ConfirmEjectTitle),
                         MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION | MB_TOPMOST) != IDYES) {
             return;
         }
@@ -686,6 +737,9 @@ void MainWindow::EjectDevice(const Device& device) {
             stoppedDisk_ = instanceId;
             stoppedTarget_ = result.stoppedInstanceId;
             stoppedName_ = displayName;
+            // The flag describes the previous record's disk; this one has not
+            // been observed gone yet.
+            stoppedSeenAbsent_ = false;
             QE_LOG_INFO(L"eject succeeded for %ls", displayName.c_str());
             if (settings.showNotifications) {
                 tray_.ShowBalloon(strings.Get(i18n::StrId::EjectOkTitle),
@@ -703,7 +757,7 @@ void MainWindow::EjectDevice(const Device& device) {
             const TASKDIALOG_BUTTON inspect{101, strings.Get(StrId::InspectFiles)};
             TASKDIALOGCONFIG dialog{};
             dialog.cbSize = sizeof(dialog);
-            dialog.hwndParent = hwnd_;
+            dialog.hwndParent = owner;
             dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
             dialog.pszMainIcon = TD_WARNING_ICON;
             dialog.pszWindowTitle = strings.Get(StrId::EjectFailTitle);
@@ -742,7 +796,7 @@ void MainWindow::EjectDevice(const Device& device) {
             }
         }
         const UINT buttons = offerRetry ? MB_RETRYCANCEL | MB_DEFBUTTON2 : MB_OK;
-        const int choice = MessageBoxW(hwnd_,
+        const int choice = MessageBoxW(owner,
             strings.Format(i18n::StrId::EjectFailText, displayName, reason).c_str(),
             strings.Get(i18n::StrId::EjectFailTitle), buttons | MB_ICONWARNING);
         if (!offerRetry || choice != IDRETRY) return;
@@ -770,6 +824,321 @@ void MainWindow::OpenSettings() {
 }
 
 void MainWindow::OpenAbout() { Dialogs::ShowAbout(instance_, hwnd_); }
+
+namespace {
+
+std::wstring VisibleSmart(const Device& device) {
+    const auto& show = Settings::Instance().Data();
+    if (device.MediaUnavailable() || device.diskInterface.empty() ||
+        !(show.showTemperature || show.showPowerOnHours || show.showPowerCycles || show.showReallocated ||
+          show.showPendingSectors))
+        return {};
+    // SMART queries are synchronous IOCTLs that can take seconds on a slow or
+    // dying drive, so every device window reload reuses fresh-enough readings
+    // instead of re-asking each disk.
+    struct CacheEntry {
+        SmartSnapshot snapshot;
+        unsigned long long tick = 0;
+    };
+    static std::unordered_map<std::wstring, CacheEntry> cache;
+    constexpr unsigned long long kSmartCacheTtlMs = 30000;
+    const unsigned long long now = GetTickCount64();
+    SmartSnapshot snap;
+    const auto found = cache.find(device.instanceId);
+    if (found != cache.end() && now - found->second.tick < kSmartCacheTtlMs) {
+        snap = found->second.snapshot;
+    } else {
+        snap = ReadSmart(device.diskInterface, device.mountPaths, device.deviceNumber);
+        if (cache.size() > 128) cache.clear();
+        cache[device.instanceId] = CacheEntry{snap, now};
+    }
+    const auto& strings = i18n::I18n::Instance();
+    std::wstring text;
+    auto append = [&](const std::wstring& part) {
+        if (!text.empty()) text += L"  ";
+        text += part;
+    };
+    if (show.showTemperature && snap.hasTemperature)
+        append(strings.Format(i18n::StrId::SmartTempValue, std::to_wstring(snap.temperatureC)));
+    if (show.showPowerOnHours && snap.hasPowerOnHours)
+        append(strings.Format(i18n::StrId::SmartHoursValue, std::to_wstring(snap.powerOnHours)));
+    if (show.showPowerCycles && snap.hasPowerCycles)
+        append(strings.Format(i18n::StrId::SmartCyclesValue, std::to_wstring(snap.powerCycles)));
+    if (show.showReallocated && snap.hasReallocated)
+        append(strings.Format(i18n::StrId::SmartReallocatedValue, std::to_wstring(snap.reallocated)));
+    if (show.showPendingSectors && snap.hasPending)
+        append(strings.Format(i18n::StrId::SmartPendingValue, std::to_wstring(snap.pending)));
+    return text;
+}
+
+INT_PTR CALLBACK SmartOptionsProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (auto result = ThemeDialog(hwnd, message, wParam, lParam)) return result;
+    if (PaintDialogHeader(message, lParam)) return TRUE;
+    if (message == WM_INITDIALOG) {
+        ApplyDialogTheme(hwnd, false);
+        const auto& strings = i18n::I18n::Instance();
+        const auto& show = Settings::Instance().Data();
+        SetWindowTextW(hwnd, strings.Get(i18n::StrId::SmartTitle));
+        SetDlgItemTextW(hwnd, IDC_DIALOG_HEADER, strings.Get(i18n::StrId::SmartTitle));
+        SetDlgItemTextW(hwnd, IDC_SMART_TEMP, strings.Get(i18n::StrId::SmartTemperature));
+        SetDlgItemTextW(hwnd, IDC_SMART_HOURS, strings.Get(i18n::StrId::SmartHours));
+        SetDlgItemTextW(hwnd, IDC_SMART_CYCLES, strings.Get(i18n::StrId::SmartCycles));
+        SetDlgItemTextW(hwnd, IDC_SMART_REALLOC, strings.Get(i18n::StrId::SmartReallocated));
+        SetDlgItemTextW(hwnd, IDC_SMART_PENDING, strings.Get(i18n::StrId::SmartPending));
+        SetDlgItemTextW(hwnd, IDC_SMART_NOTE, strings.Get(i18n::StrId::SmartNote));
+        SetDlgItemTextW(hwnd, IDOK, strings.Get(i18n::StrId::DialogSave));
+        SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DialogCancel));
+        CheckDlgButton(hwnd, IDC_SMART_TEMP, show.showTemperature ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SMART_HOURS, show.showPowerOnHours ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SMART_CYCLES, show.showPowerCycles ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SMART_REALLOC, show.showReallocated ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SMART_PENDING, show.showPendingSectors ? BST_CHECKED : BST_UNCHECKED);
+        return TRUE;
+    }
+    if (message == WM_COMMAND && LOWORD(wParam) == IDOK) {
+        auto& show = Settings::Instance().Data();
+        const auto previous = show;
+        show.showTemperature = IsDlgButtonChecked(hwnd, IDC_SMART_TEMP) == BST_CHECKED;
+        show.showPowerOnHours = IsDlgButtonChecked(hwnd, IDC_SMART_HOURS) == BST_CHECKED;
+        show.showPowerCycles = IsDlgButtonChecked(hwnd, IDC_SMART_CYCLES) == BST_CHECKED;
+        show.showReallocated = IsDlgButtonChecked(hwnd, IDC_SMART_REALLOC) == BST_CHECKED;
+        show.showPendingSectors = IsDlgButtonChecked(hwnd, IDC_SMART_PENDING) == BST_CHECKED;
+        if (!Settings::Instance().Save()) {
+            show = previous;
+            MessageBoxW(hwnd, i18n::I18n::Instance().Get(i18n::StrId::SettingsSaveFailed),
+                        i18n::I18n::Instance().Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONERROR);
+            return TRUE;
+        }
+        EndDialog(hwnd, IDOK);
+        return TRUE;
+    }
+    if (message == WM_COMMAND && LOWORD(wParam) == IDCANCEL) {
+        EndDialog(hwnd, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+struct DeviceWindowState {
+    MainWindow* owner = nullptr;
+    DeviceList devices;
+    HFONT bold = nullptr;
+};
+
+}  // namespace
+
+void MainWindow::OpenDevices() {
+    INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_TREEVIEW_CLASSES};
+    InitCommonControlsEx(&controls);
+    DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_DEVICES), hwnd_, DeviceWindowProc,
+                    reinterpret_cast<LPARAM>(this));
+    promptOwner_ = nullptr;
+}
+
+void MainWindow::UpdateDeviceButtons(HWND dialog) {
+    const auto* state = reinterpret_cast<const DeviceWindowState*>(GetWindowLongPtrW(dialog, GWLP_USERDATA));
+    HWND tree = GetDlgItem(dialog, IDC_DEVICE_LIST);
+    const HTREEITEM selected = TreeView_GetSelection(tree);
+    const Device* device = nullptr;
+    if (state && selected) {
+        TVITEMW item{};
+        item.mask = TVIF_PARAM;
+        item.hItem = selected;
+        if (TreeView_GetItem(tree, &item) && item.lParam >= 0 &&
+            static_cast<size_t>(item.lParam) < state->devices.size())
+            device = &state->devices[static_cast<size_t>(item.lParam)];
+    }
+    const bool ejectable = device && device->CanEject() && !device->MediaUnavailable();
+    const bool media = ejectable && device->driverMediaRemovable == true && !device->volumeInterfaces.empty();
+    EnableWindow(GetDlgItem(dialog, IDC_DEVICE_EJECT), ejectable);
+    EnableWindow(GetDlgItem(dialog, IDC_DEVICE_MEDIA), media);
+}
+
+void MainWindow::ReloadDeviceWindow(HWND dialog) {
+    auto* state = reinterpret_cast<DeviceWindowState*>(GetWindowLongPtrW(dialog, GWLP_USERDATA));
+    if (!state) return;
+    state->devices = devices_.Devices();
+    HWND tree = GetDlgItem(dialog, IDC_DEVICE_LIST);
+    TreeView_DeleteAllItems(tree);
+
+    const auto groups = GroupReaders(state->devices);
+
+    const auto& strings = i18n::I18n::Instance();
+    const auto& preferences = Settings::Instance().Data();
+    auto detail = [&](const Device& device) {
+        std::wstring line = preferences.DeviceName(device.instanceId, device.displayName);
+        line += L"    ";
+        line += device.driveLetters.empty() ? L"-" : device.driveLetters;
+        if (device.sizeBytes) {
+            line += L"    ";
+            line += str::FileSizeString(device.sizeBytes);
+        }
+        line += L"    ";
+        line += strings.Get(device.mediaState == MediaState::Present ? i18n::StrId::StatePresent :
+                            device.mediaState == MediaState::Empty ? i18n::StrId::StateEmpty :
+                            device.mediaState == MediaState::NotReady ? i18n::StrId::StateNotReady :
+                            (!device.driveLetters.empty() || device.sizeBytes) ? i18n::StrId::StatePresent :
+                            i18n::StrId::StateUnknown);
+        const auto smart = VisibleSmart(device);
+        if (!smart.empty()) {
+            line += L"    ";
+            line += smart;
+        }
+        return line;
+    };
+    for (const auto& group : groups) {
+        const bool reader = !group.id.empty();
+        HTREEITEM parent = TVI_ROOT;
+        if (reader) {
+            std::wstring title = group.name.empty() ? std::wstring(strings.Get(i18n::StrId::CardReader)) : group.name;
+            TVINSERTSTRUCTW insert{};
+            insert.hParent = TVI_ROOT;
+            insert.hInsertAfter = TVI_LAST;
+            insert.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_STATE | TVIF_CHILDREN;
+            insert.item.state = TVIS_BOLD | TVIS_EXPANDED;
+            insert.item.stateMask = TVIS_BOLD | TVIS_EXPANDED;
+            insert.item.cChildren = 1;
+            insert.item.lParam = -1;
+            insert.item.pszText = title.data();
+            parent = TreeView_InsertItem(tree, &insert);
+        }
+        for (const auto index : group.indexes) {
+            std::wstring line = detail(state->devices[index]);
+            TVINSERTSTRUCTW insert{};
+            insert.hParent = parent;
+            insert.hInsertAfter = TVI_LAST;
+            insert.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_STATE;
+            insert.item.state = reader ? 0 : TVIS_BOLD;
+            insert.item.stateMask = TVIS_BOLD;
+            insert.item.lParam = static_cast<LPARAM>(index);
+            insert.item.pszText = line.data();
+            TreeView_InsertItem(tree, &insert);
+        }
+    }
+    const bool empty = state->devices.empty();
+    ShowWindow(tree, empty ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(dialog, IDC_DEVICE_EMPTY), empty ? SW_SHOW : SW_HIDE);
+    UpdateDeviceButtons(dialog);
+}
+
+INT_PTR CALLBACK MainWindow::DeviceWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (auto result = ThemeDialog(hwnd, message, wParam, lParam)) return result;
+    if (PaintDialogHeader(message, lParam)) return TRUE;
+    if (message == WM_INITDIALOG || message == WM_SETTINGCHANGE || message == WM_SYSCOLORCHANGE) {
+        // The tree control draws its own background: without an explicit color
+        // it stays white in the dark theme. Runs on theme switches too.
+        HWND tree = GetDlgItem(hwnd, IDC_DEVICE_LIST);
+        const bool dark = DialogDark(hwnd);
+        SetWindowTheme(tree, dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+        SendMessageW(tree, TVM_SETBKCOLOR, 0, dark ? darkPaper : CLR_NONE);
+        SendMessageW(tree, TVM_SETTEXTCOLOR, 0, dark ? darkInk : GetSysColor(COLOR_WINDOWTEXT));
+        InvalidateRect(tree, nullptr, FALSE);
+    }
+    auto* state = reinterpret_cast<DeviceWindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (message == WM_INITDIALOG) {
+        state = new DeviceWindowState{reinterpret_cast<MainWindow*>(lParam), {}};
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        state->owner->promptOwner_ = hwnd;
+        ApplyDialogTheme(hwnd, false);
+        state->bold = nullptr;
+        if (HFONT base = reinterpret_cast<HFONT>(SendMessageW(hwnd, WM_GETFONT, 0, 0))) {
+            LOGFONTW font{};
+            if (GetObjectW(base, sizeof(font), &font)) {
+                font.lfWeight = FW_SEMIBOLD;
+                state->bold = CreateFontIndirectW(&font);
+            }
+        }
+        const auto& strings = i18n::I18n::Instance();
+        SetWindowTextW(hwnd, strings.Get(i18n::StrId::DevicesTitle));
+        SetDlgItemTextW(hwnd, IDC_DIALOG_HEADER, strings.Get(i18n::StrId::DevicesTitle));
+        SetDlgItemTextW(hwnd, IDC_DEVICE_EMPTY, strings.Get(i18n::StrId::DevicesEmpty));
+        SetDlgItemTextW(hwnd, IDC_DEVICE_EJECT, strings.Get(i18n::StrId::DevicesEject));
+        SetDlgItemTextW(hwnd, IDC_DEVICE_MEDIA, strings.Get(i18n::StrId::DevicesMedia));
+        SetDlgItemTextW(hwnd, IDC_DEVICE_SMART, strings.Get(i18n::StrId::SmartChoose));
+        SetDlgItemTextW(hwnd, IDC_DEVICE_REFRESH, strings.Get(i18n::StrId::DevicesRefresh));
+        SetDlgItemTextW(hwnd, IDCANCEL, strings.Get(i18n::StrId::DevicesClose));
+        HWND tree = GetDlgItem(hwnd, IDC_DEVICE_LIST);
+        TreeView_SetItemHeight(tree, 24);
+        TreeView_SetIndent(tree, 28);
+        state->owner->ReloadDeviceWindow(hwnd);
+        return TRUE;
+    }
+    if (!state || !state->owner) return FALSE;
+    if (message == WM_COMMAND) {
+        const UINT command = LOWORD(wParam);
+        if (command == IDCANCEL) {
+            EndDialog(hwnd, 0);
+            return TRUE;
+        }
+        HWND list = GetDlgItem(hwnd, IDC_DEVICE_LIST);
+        const HTREEITEM selected = TreeView_GetSelection(list);
+        size_t index = state->devices.size();
+        if (selected) {
+            TVITEMW item{};
+            item.mask = TVIF_PARAM;
+            item.hItem = selected;
+            if (TreeView_GetItem(list, &item) && item.lParam >= 0) index = static_cast<size_t>(item.lParam);
+        }
+        if (command == IDC_DEVICE_REFRESH) {
+            state->owner->RefreshDevices();
+            state->owner->ReloadDeviceWindow(hwnd);
+            return TRUE;
+        }
+        if (command == IDC_DEVICE_SMART) {
+            if (DialogBoxParamW(state->owner->instance_, MAKEINTRESOURCEW(IDD_SMART), hwnd, SmartOptionsProc, 0) == IDOK)
+                state->owner->ReloadDeviceWindow(hwnd);
+            return TRUE;
+        }
+        if (index < state->devices.size() && (command == IDC_DEVICE_EJECT || command == IDC_DEVICE_MEDIA)) {
+            const Device device = state->devices[index];
+            // The double-click notification sends the eject command directly,
+            // so the same eligibility rule as UpdateDeviceButtons applies here.
+            if (device.CanEject() && !device.MediaUnavailable()) {
+                if (command == IDC_DEVICE_MEDIA) state->owner->EjectMedium(device);
+                else state->owner->EjectDevice(device);
+            }
+            state->owner->ReloadDeviceWindow(hwnd);
+            return TRUE;
+        }
+    }
+    if (message == WM_NOTIFY) {
+        const auto* header = reinterpret_cast<const NMHDR*>(lParam);
+        if (header->idFrom == IDC_DEVICE_LIST && header->code == NM_CUSTOMDRAW) {
+            auto* draw = reinterpret_cast<NMTVCUSTOMDRAW*>(lParam);
+            if (draw->nmcd.dwDrawStage == CDDS_PREPAINT) {
+                SetWindowLongPtrW(hwnd, DWLP_MSGRESULT, CDRF_NOTIFYITEMDRAW);
+                return TRUE;
+            }
+            if (draw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                const bool nested = TreeView_GetParent(header->hwndFrom,
+                    reinterpret_cast<HTREEITEM>(draw->nmcd.dwItemSpec)) != nullptr;
+                const bool dark = DialogDark(hwnd);
+                if (!nested) {
+                    draw->clrText = dark ? RGB(236, 244, 242) : RGB(16, 40, 50);
+                    if (state->bold) SelectObject(draw->nmcd.hdc, state->bold);
+                    SetWindowLongPtrW(hwnd, DWLP_MSGRESULT, CDRF_NEWFONT);
+                } else {
+                    draw->clrText = dark ? RGB(168, 190, 194) : RGB(84, 104, 114);
+                    SetWindowLongPtrW(hwnd, DWLP_MSGRESULT, CDRF_DODEFAULT);
+                }
+                return TRUE;
+            }
+        }
+        if (header->idFrom == IDC_DEVICE_LIST && header->code == TVN_SELCHANGED)
+            state->owner->UpdateDeviceButtons(hwnd);
+        if (header->idFrom == IDC_DEVICE_LIST && header->code == NM_DBLCLK)
+            SendMessageW(hwnd, WM_COMMAND, IDC_DEVICE_EJECT, 0);
+        return FALSE;  // unhandled notifications take the default path
+    }
+    if (message == WM_DESTROY) {
+        state->owner->promptOwner_ = nullptr;
+        if (state->bold) DeleteObject(state->bold);
+        delete state;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
 
 void MainWindow::HandleSecondInstance() {
     tray_.ShowBalloon(QUICKEJECT_APP_NAME_W,

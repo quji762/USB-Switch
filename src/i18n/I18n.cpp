@@ -47,7 +47,7 @@ std::wstring I18n::Format(StrId id, std::wstring_view a1, std::wstring_view a2,
     const std::wstring_view text = Get(id);
     const std::wstring_view values[] = {a1, a2, a3};
 
-    // Single pass: a sequential ReplaceAll per placeholder would re-substitute
+    // Single pass: replacing one placeholder at a time would re-substitute
     // inside an argument's own text (a volume label such as "disk%2" would be
     // mangled), because the injected content is scanned again by later passes.
     std::wstring out;

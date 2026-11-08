@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <windows.h>
@@ -55,8 +56,48 @@ struct Device {
     ULONG deviceNumber = 0xFFFFFFFF;
 
     bool CanEject() const noexcept { return devInst != 0; }
+
+    // USB device that owns this disk when it is a card-reader slot. Empty for a
+    // normal removable disk. Slots that share a readerId belong to one reader.
+    std::wstring readerId;
+    std::wstring readerName;
 };
 
 using DeviceList = std::vector<Device>;
+
+struct DeviceGroup {
+    std::wstring id;
+    std::wstring name;
+    std::vector<size_t> indexes;
+};
+
+// A reader submenu is produced only when at least two devices share readerId.
+// Anything else stays a single top-level device, in the original order.
+inline std::vector<DeviceGroup> GroupReaders(const DeviceList& devices) {
+    std::unordered_map<std::wstring, size_t> counts;
+    for (const auto& device : devices)
+        if (!device.readerId.empty()) ++counts[device.readerId];
+
+    std::vector<DeviceGroup> groups;
+    std::unordered_map<std::wstring, size_t> position;
+    for (size_t index = 0; index < devices.size(); ++index) {
+        const auto& device = devices[index];
+        const bool reader = !device.readerId.empty() && counts[device.readerId] >= 2;
+        if (!reader) {
+            groups.push_back(DeviceGroup{{}, {}, {index}});
+            continue;
+        }
+        const auto found = position.find(device.readerId);
+        if (found == position.end()) {
+            position.emplace(device.readerId, groups.size());
+            groups.push_back(DeviceGroup{device.readerId, device.readerName, {index}});
+        } else {
+            auto& group = groups[found->second];
+            group.indexes.push_back(index);
+            if (group.name.empty()) group.name = device.readerName;
+        }
+    }
+    return groups;
+}
 
 }  // namespace qe

@@ -22,7 +22,6 @@ const Entry kStrings[] = {
      L"USB-Switch is already running; use the tray icon."},
 
     // Tray menu
-    {StrId::MenuDevices, L"可移动设备(%1)", L"Removable devices (%1)"},
     {StrId::MenuScanUnavailable, L"暂时无法读取设备列表，将自动重试", L"Device list unavailable; retrying automatically"},
     {StrId::MenuNoDevices, L"(没有可移动设备)", L"(no removable devices)"},
     {StrId::MenuEjectItem, L"%1 — 点击安全弹出", L"%1 — click to safely remove"},
@@ -38,21 +37,47 @@ const Entry kStrings[] = {
     {StrId::AllHidden, L"已隐藏所有已连接设备", L"All connected devices are hidden"},
     {StrId::EmptySlot, L"%1 — 空卡槽（无介质）", L"%1 — empty slot (no media)"},
     {StrId::SlotNotReady, L"%1 — 无可用介质（空槽或未就绪）", L"%1 — no ready media (empty or not ready)"},
-    {StrId::MenuMedia, L"只退出介质", L"Eject media only"},
+    {StrId::MenuMedia, L"退出存储卡", L"Eject card"},
     {StrId::ReconnectDevice, L"重新连接：%1", L"Reconnect: %1"},
     {StrId::ReconnectAdmin, L"Windows 要求管理员权限才能重启“%1”。是否打开系统授权提示？也可以选“否”，再拔下并重新插入设备。", L"Windows requires administrator permission to restart “%1”. Open the system permission prompt? You can also choose No and reconnect the device by hand."},
     {StrId::ReconnectTimeout, L"尚未检测到原设备。请刷新列表；若仍未出现，请拔下再插入。", L"The original device has not reappeared. Refresh the list; if it is still missing, unplug it and plug it back in."},
     {StrId::ReconnectFailed, L"无法重新连接设备：%1\n\n请拔下再插入。", L"Could not reconnect the device: %1\n\nUnplug it and plug it back in."},
-    {StrId::MediaConfirm, L"只退出“%1”中的介质并保留读卡器？\n\n如果要拔下整个 USB 设备，请选“否”，然后使用主菜单的安全弹出。", L"Eject the medium in “%1” and leave the reader connected?\n\nTo unplug the whole USB device, choose No and use safe removal in the main menu."},
+    {StrId::MediaConfirm, L"退出“%1”中的存储卡，读卡器保持连接？\n\n如果要拔下整个设备，请选“否”，然后使用安全弹出。", L"Eject the card in “%1” and leave the reader connected?\n\nTo unplug the whole device, choose No and use safe removal."},
     {StrId::MediaChanged, L"设备或卷列表已变化，请重新打开菜单并核对目标。", L"The device or its volumes changed. Reopen the menu and check the target."},
-    {StrId::MediaLockFailed, L"无法独占访问该介质。请关闭其中的文件并等待复制结束后重试。", L"Could not lock the medium. Close its files and wait for transfers to finish before trying again."},
-    {StrId::MediaOk, L"驱动已接受“%1”的退卡请求。", L"The driver accepted the media eject request for “%1”."},
+    {StrId::MediaLockFailed, L"存储卡正在使用，暂时无法退出。请关闭其中的文件并等待复制结束后重试。", L"The card is in use and cannot be ejected yet. Close its files and wait for transfers to finish."},
+    {StrId::MediaOk, L"已请求退出“%1”中的存储卡。", L"The card in “%1” was asked to eject."},
     {StrId::AliasHint, L"为 %1 设置别名。留空恢复原名。", L"Name for %1. Leave blank to restore the original name."},
     {StrId::HotkeyLabel, L"设备菜单快捷键", L"Device menu shortcut"},
     {StrId::HotkeyOff, L"关闭", L"Off"},
+    {StrId::HotkeyCtrlAlt, L"Ctrl ＋ Alt ＋ %1", L"Ctrl + Alt + %1"},
     {StrId::HotkeyConflict, L"快捷键不可用。请在设置中选择其他组合。", L"Shortcut unavailable. Choose another combination in Settings."},
     {StrId::MenuAbout, L"关于 USB-Switch", L"About USB-Switch"},
     {StrId::MenuExit, L"退出", L"Exit"},
+    {StrId::MenuConnected, L"已连接的设备", L"Connected devices"},
+    {StrId::CardReader, L"读卡器", L"Card reader"},
+    {StrId::DevicesTitle, L"已连接的设备", L"Connected devices"},
+    {StrId::DevicesEmpty, L"当前没有可移动设备。", L"No removable devices are connected."},
+    {StrId::DevicesEject, L"安全弹出", L"Safely remove"},
+    {StrId::DevicesMedia, L"退出存储卡", L"Eject card"},
+    {StrId::DevicesRefresh, L"刷新", L"Refresh"},
+    {StrId::DevicesClose, L"关闭", L"Close"},
+    {StrId::StatePresent, L"有介质", L"Media present"},
+    {StrId::StateEmpty, L"空卡槽", L"Empty slot"},
+    {StrId::StateNotReady, L"未就绪", L"Not ready"},
+    {StrId::StateUnknown, L"未知", L"Unknown"},
+    {StrId::SmartChoose, L"显示项", L"Details"},
+    {StrId::SmartTitle, L"要显示的信息", L"Details to show"},
+    {StrId::SmartNote, L"只显示设备实际提供的项目。普通 U 盘和存储卡经常没有这些数据。若温度以外的数值始终为空，请以管理员身份运行 USB-Switch 再试。", L"Only values the device actually reports are shown. Flash drives and memory cards often have none. If values besides temperature stay empty, run USB-Switch as administrator."},
+    {StrId::SmartTemperature, L"温度", L"Temperature"},
+    {StrId::SmartHours, L"通电时间", L"Power-on hours"},
+    {StrId::SmartCycles, L"通电次数", L"Power cycles"},
+    {StrId::SmartReallocated, L"重新分配扇区", L"Reallocated sectors"},
+    {StrId::SmartPending, L"待处理扇区", L"Pending sectors"},
+    {StrId::SmartTempValue, L"%1度", L"%1°C"},
+    {StrId::SmartHoursValue, L"%1 小时", L"%1 h"},
+    {StrId::SmartCyclesValue, L"通电 %1 次", L"%1 cycles"},
+    {StrId::SmartReallocatedValue, L"重分配 %1", L"Reallocated %1"},
+    {StrId::SmartPendingValue, L"待处理 %1", L"Pending %1"},
 
     // Eject flow
     {StrId::ConfirmEjectTitle, L"确认安全弹出", L"Confirm safe removal"},
@@ -134,8 +159,6 @@ const Entry kStrings[] = {
     {StrId::SettingsLanguageAuto, L"跟随系统", L"Follow system"},
     {StrId::SettingsLanguageZh, L"中文", L"中文"},
     {StrId::SettingsLanguageEn, L"English", L"English"},
-    {StrId::SettingsNote, L"语言更改即时生效；本对话框的文字将在下次打开时更新。",
-     L"Language changes apply immediately; this dialog updates next time you open it."},
     {StrId::SettingsSaveFailed, L"无法保存设置。请检查用户配置目录是否可写，然后重试。",
      L"Settings could not be saved. Check that your user configuration directory is writable and try again."},
     {StrId::SettingsStartupFailed, L"无法更新 Windows 开机启动项。请检查注册表权限，或确认同名启动项是否指向其他程序。",
@@ -146,8 +169,6 @@ const Entry kStrings[] = {
 
     // About dialog
     {StrId::AboutTitle, L"关于 USB-Switch", L"About USB-Switch"},
-    {StrId::AboutAppName, L"USB-Switch " QUICKEJECT_VERSION_STRING_W,
-     L"USB-Switch " QUICKEJECT_VERSION_STRING_W},
     {StrId::AboutDescription,
      L"一个轻量的 USB 安全弹出工具：快速枚举可移动设备、一键安全弹出、托盘常驻。\n\n"
      L"本软件按“原样”提供，不对数据丢失承担责任。拔出设备前请确认数据已保存。",
@@ -160,7 +181,7 @@ const Entry kStrings[] = {
      L"用法: usb-switch [选项]\n"
      L"  --list            列出可移动设备后退出\n"
      L"  --list --json     以 JSON 数组输出设备列表\n"
-     L"  --eject-media <目标> [--json]  只退出介质，保留读卡器\n"
+     L"  --eject-media <目标> [--json]  退出存储卡，读卡器保持连接\n"
      L"  --eject <目标>    按盘符、完整挂载路径或设备实例 ID 安全弹出\n"
      L"  --eject <目标> --json  弹出并输出 JSON 结果\n"
      L"  --eject <目标> --files --json  被拒绝时查询相关进程打开的路径\n"
@@ -171,7 +192,7 @@ const Entry kStrings[] = {
      L"Usage: usb-switch [options]\n"
      L"  --list            list removable devices and exit\n"
      L"  --list --json     output the device list as a JSON array\n"
-     L"  --eject-media <target> [--json]  eject media and leave the reader connected\n"
+     L"  --eject-media <target> [--json]  eject the card and leave the reader connected\n"
      L"  --eject <target>  safely remove by drive, exact mount path or instance ID\n"
      L"  --eject <target> --json  eject and output a JSON result\n"
      L"  --eject <target> --files --json  inspect open paths if removal is vetoed\n"
@@ -189,15 +210,14 @@ const Entry kStrings[] = {
      L"usb-switch " QUICKEJECT_VERSION_STRING_W L" (Windows)"},
 
     // Errors
-    {StrId::ErrorGeneric, L"发生错误：%1", L"An error occurred: %1"},
     {StrId::ErrorEnumFailed, L"无法枚举系统设备，可能是系统组件损坏或权限不足。",
      L"Could not enumerate system devices; system components may be damaged or permissions are insufficient."},
     {StrId::ErrorWindowCreation, L"无法创建程序窗口，USB-Switch 无法启动。",
      L"Could not create the application window; USB-Switch cannot start."},
     {StrId::ErrorTrayCreation, L"无法创建系统托盘图标，USB-Switch 无法启动。请确认 Windows 资源管理器正在运行。",
      L"Could not create the system tray icon; USB-Switch cannot start. Check that Windows Explorer is running."},
-    {StrId::ErrorConsoleAttach, L"无法连接到父进程的控制台，命令行输出不可用。",
-     L"Could not attach to the parent console; command line output is unavailable."},
+    {StrId::ErrorCommandLineParse, L"无法解析命令行参数，USB-Switch 无法启动。",
+     L"Could not parse the command line; USB-Switch cannot start."},
 };
 
 static_assert(static_cast<size_t>(StrId::kCount) == std::size(kStrings),

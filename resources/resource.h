@@ -9,7 +9,21 @@
 #define IDD_ABOUT                       201
 #define IDD_ALIAS                       203
 #define IDD_OPEN_FILES                  204
+#define IDD_DEVICES                     205
+#define IDD_SMART                       206
 #define IDC_FILES_TEXT                  601
+#define IDC_DEVICE_LIST                 801
+#define IDC_DEVICE_EMPTY                802
+#define IDC_DEVICE_EJECT                803
+#define IDC_DEVICE_MEDIA                804
+#define IDC_DEVICE_REFRESH              805
+#define IDC_DEVICE_SMART                806
+#define IDC_SMART_TEMP                  901
+#define IDC_SMART_HOURS                 902
+#define IDC_SMART_CYCLES                903
+#define IDC_SMART_REALLOC               904
+#define IDC_SMART_PENDING               905
+#define IDC_SMART_NOTE                  906
 #define IDC_ALIAS_NAME                  501
 #define IDC_ALIAS_HINT                  502
 #define IDC_SET_KEY_LABEL               407
@@ -24,7 +38,6 @@
 #define IDD_SETTINGS                    202
 
 // About dialog
-#define IDC_ABOUT_APPNAME               301
 #define IDC_ABOUT_DESC                  302
 #define IDC_ABOUT_WEBSITE               303
 
@@ -34,7 +47,6 @@
 #define IDC_SET_CONFIRM                 403
 #define IDC_SET_LANG_LABEL              404
 #define IDC_SET_LANG                    405
-#define IDC_SET_NOTE                    406
 
 // winres.h on some toolchains does not define IDC_STATIC.
 #ifndef IDC_STATIC

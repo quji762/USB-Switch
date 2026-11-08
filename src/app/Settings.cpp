@@ -5,18 +5,25 @@
 #include "app/Logger.h"
 #include "app/AppInfo.h"
 #include "util/Str.h"
+#include "util/Win32.h"
 
 namespace qe {
 namespace {
 
-std::wstring EnvironmentOr(std::wstring_view name, std::wstring_view fallback) {
-    DWORD length = GetEnvironmentVariableW(std::wstring(name).c_str(), nullptr, 0);
-    if (length == 0) return std::wstring(fallback);
-    std::wstring value(static_cast<size_t>(length), L'\0');
-    DWORD copied = GetEnvironmentVariableW(std::wstring(name).c_str(), value.data(), length);
-    if (copied == 0 || copied >= length) return std::wstring(fallback);
-    value.resize(copied);
-    return value;
+// Top-level keys this build reads, plus the schema marker it writes. Any other
+// member of a settings file is kept verbatim in AppSettings::extra so a newer
+// version's keys survive when this older build saves its defaults over them.
+constexpr const wchar_t* kKnownKeys[] = {
+    L"language", L"appearance", L"menuHotkey", L"deviceAliases", L"hiddenDevices",
+    L"runAtStartup", L"showNotifications", L"confirmBeforeEject", L"smartDisplay",
+    L"version",
+};
+
+bool IsKnownKey(std::wstring_view key) {
+    for (const wchar_t* candidate : kKnownKeys) {
+        if (key == candidate) return true;
+    }
+    return false;
 }
 
 }  // namespace
@@ -48,11 +55,35 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
     settings.runAtStartup = root.GetBool(L"runAtStartup", settings.runAtStartup);
     settings.showNotifications = root.GetBool(L"showNotifications", settings.showNotifications);
     settings.confirmBeforeEject = root.GetBool(L"confirmBeforeEject", settings.confirmBeforeEject);
+    if (const auto* smart = root.Find(L"smartDisplay"); smart && smart->IsObject()) {
+        settings.showTemperature = smart->GetBool(L"temperature", settings.showTemperature);
+        settings.showPowerOnHours = smart->GetBool(L"powerOnHours", settings.showPowerOnHours);
+        settings.showPowerCycles = smart->GetBool(L"powerCycles", settings.showPowerCycles);
+        settings.showReallocated = smart->GetBool(L"reallocated", settings.showReallocated);
+        settings.showPendingSectors = smart->GetBool(L"pending", settings.showPendingSectors);
+        // Same rule as top-level extra, one level down: members a newer version
+        // added inside smartDisplay survive this build's saves.
+        for (const auto& sub : smart->Keys()) {
+            if (sub == L"temperature" || sub == L"powerOnHours" || sub == L"powerCycles" ||
+                sub == L"reallocated" || sub == L"pending")
+                continue;
+            if (const json::Value* value = smart->Find(sub)) settings.smartExtra[sub] = *value;
+        }
+    }
+    // Members this build does not understand are stored unchanged so the next
+    // Save() writes them back instead of silently dropping data a newer
+    // version had put into the file.
+    for (const auto& key : root.Keys()) {
+        if (!IsKnownKey(key)) {
+            if (const json::Value* value = root.Find(key)) settings.extra[key] = *value;
+        }
+    }
     return settings;
 }
 
 json::Value AppSettings::ToJson() const {
     json::Value root = json::Value::Object();
+    root.Set(L"version", json::Value::Number(1));  // schema version; readers ignore it for now
     root.Set(L"menuHotkey", json::Value::String(menuHotkey));
     auto names = json::Value::Object();
     for (const auto& item : aliases) names.Set(item.first, json::Value::String(item.second));
@@ -65,6 +96,18 @@ json::Value AppSettings::ToJson() const {
     root.Set(L"runAtStartup", json::Value::Bool(runAtStartup));
     root.Set(L"showNotifications", json::Value::Bool(showNotifications));
     root.Set(L"confirmBeforeEject", json::Value::Bool(confirmBeforeEject));
+    auto smart = json::Value::Object();
+    smart.Set(L"temperature", json::Value::Bool(showTemperature));
+    smart.Set(L"powerOnHours", json::Value::Bool(showPowerOnHours));
+    smart.Set(L"powerCycles", json::Value::Bool(showPowerCycles));
+    smart.Set(L"reallocated", json::Value::Bool(showReallocated));
+    smart.Set(L"pending", json::Value::Bool(showPendingSectors));
+    for (const auto& item : smartExtra) smart.Set(item.first, item.second);
+    root.Set(L"smartDisplay", std::move(smart));
+    // Unknown keys read from a newer version are written back after the known
+    // ones. `extra` never holds a known key, so this cannot shadow one; the
+    // ordered map merely keeps the output deterministic.
+    for (const auto& item : extra) root.Set(item.first, item.second);
     return root;
 }
 
@@ -120,6 +163,18 @@ void Settings::Load() {
                 QE_LOG_WARN(L"could not persist migrated settings: %ls", error.c_str());
             }
             return;
+        }
+    }
+    // The file exists but could not be read as JSON. Preserve its bytes before
+    // the next Save() replaces the file, so a half-readable settings file can
+    // still be recovered by hand instead of being silently lost to defaults.
+    if (pathError != ERROR_FILE_NOT_FOUND && pathError != ERROR_PATH_NOT_FOUND) {
+        const std::wstring corruptBackup = path + L".corrupt";
+        if (CopyFileW(path.c_str(), corruptBackup.c_str(), FALSE)) {
+            QE_LOG_WARN(L"unreadable settings preserved as %ls", corruptBackup.c_str());
+        } else {
+            QE_LOG_WARN(L"could not preserve unreadable settings: %ls",
+                        str::Win32ErrorMessage(GetLastError()).c_str());
         }
     }
     QE_LOG_INFO(L"using default settings (%ls)", error.c_str());

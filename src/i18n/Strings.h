@@ -13,7 +13,6 @@ enum class StrId {
     TrayHintRunning,
 
     // Tray menu
-    MenuDevices,
     MenuScanUnavailable,
     MenuNoDevices,
     MenuEjectItem,
@@ -40,9 +39,35 @@ enum class StrId {
     AliasHint,
     HotkeyLabel,
     HotkeyOff,
+    HotkeyCtrlAlt,
     HotkeyConflict,
     MenuAbout,
     MenuExit,
+    MenuConnected,
+    CardReader,
+    DevicesTitle,
+    DevicesEmpty,
+    DevicesEject,
+    DevicesMedia,
+    DevicesRefresh,
+    DevicesClose,
+    StatePresent,
+    StateEmpty,
+    StateNotReady,
+    StateUnknown,
+    SmartChoose,
+    SmartTitle,
+    SmartNote,
+    SmartTemperature,
+    SmartHours,
+    SmartCycles,
+    SmartReallocated,
+    SmartPending,
+    SmartTempValue,
+    SmartHoursValue,
+    SmartCyclesValue,
+    SmartReallocatedValue,
+    SmartPendingValue,
 
     // Eject flow
     ConfirmEjectTitle,
@@ -107,7 +132,6 @@ enum class StrId {
     SettingsLanguageAuto,
     SettingsLanguageZh,
     SettingsLanguageEn,
-    SettingsNote,
     SettingsSaveFailed,
     SettingsStartupFailed,
 
@@ -117,7 +141,6 @@ enum class StrId {
 
     // About dialog
     AboutTitle,
-    AboutAppName,
     AboutDescription,
     AboutWebsite,
 
@@ -131,11 +154,10 @@ enum class StrId {
     CliVersion,
 
     // Errors
-    ErrorGeneric,
     ErrorEnumFailed,
     ErrorWindowCreation,
     ErrorTrayCreation,
-    ErrorConsoleAttach,
+    ErrorCommandLineParse,
 
     kCount
 };

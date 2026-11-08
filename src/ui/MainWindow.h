@@ -59,12 +59,20 @@ private:
     void RebuildTrayTip();
     void EjectDevice(const Device& device);
     void EjectMedium(const Device& device);
+    void OpenDevices();
+    HWND PromptOwner() const noexcept { return promptOwner_ ? promptOwner_ : hwnd_; }
+    static INT_PTR CALLBACK DeviceWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void ReloadDeviceWindow(HWND dialog);
+    void UpdateDeviceButtons(HWND dialog);
     void ApplyMenuHotkey();
     std::wstring registeredKey_;
     bool menuOpen_ = false;
     std::wstring stoppedDisk_, stoppedTarget_, stoppedName_;
+    // Set once a scan has seen the ejected disk gone; see RefreshDevices.
+    bool stoppedSeenAbsent_ = false;
     ULONGLONG reconnectDeadline_ = 0;
     qe::Handle restartProcess_;
+    HWND promptOwner_ = nullptr;
     void OpenSettings();
     void OpenAbout();
     HICON LoadTrayIcon() const;

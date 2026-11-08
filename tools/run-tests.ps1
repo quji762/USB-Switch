@@ -59,6 +59,7 @@ if (Test-Path $appInfo) { $includeDirs += $genDir }
     (Join-Path $root 'src\util\Str.cpp') `
     (Join-Path $root 'src\i18n\I18n.cpp') `
     (Join-Path $root 'src\i18n\Strings.cpp') `
+    (Join-Path $root 'src\core\SmartInfo.cpp') `
     -lsetupapi -lcfgmgr32 -lwevtapi -lcomctl32 -lole32 -ladvapi32 -luser32 -lgdi32
 if ($LASTEXITCODE -ne 0) { throw "test build failed ($LASTEXITCODE)" }
 

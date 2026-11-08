@@ -37,7 +37,7 @@ inline bool PaintDialogHeader(UINT message, LPARAM lp) {
     SetBkMode(dc,TRANSPARENT);
     auto label = [&](const wchar_t* text, RECT box, int size, int weight, COLORREF color, UINT align) {
         HFONT font = CreateFontW(-px(size),0,0,0,weight,0,0,0,DEFAULT_CHARSET,0,0,
-                                  CLEARTYPE_QUALITY,0,L"Segoe UI");
+                                  CLEARTYPE_QUALITY,0,L"Microsoft YaHei UI");
         HGDIOBJ old = font ? SelectObject(dc,font) : nullptr;
         SetTextColor(dc,color);
         DrawTextW(dc,text,-1,&box,align|DT_SINGLELINE|DT_VCENTER|DT_NOPREFIX|DT_END_ELLIPSIS);

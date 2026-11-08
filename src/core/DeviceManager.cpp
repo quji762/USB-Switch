@@ -53,6 +53,49 @@ std::wstring QueryDevicePropertyString(HDEVINFO info, const SP_DEVINFO_DATA& dat
     return type == DEVPROP_TYPE_STRING ? std::wstring(large.data()) : std::wstring();
 }
 
+std::wstring NodeRegistryString(DEVINST node, ULONG property) {
+    WCHAR buffer[512];
+    ULONG type = 0;
+    ULONG bytes = sizeof(buffer);
+    if (CM_Get_DevNode_Registry_PropertyW(node, property, &type, buffer, &bytes, 0) != CR_SUCCESS ||
+        type != REG_SZ || bytes < sizeof(WCHAR) || bytes > sizeof(buffer) || bytes % 2 || buffer[0] == L'\0')
+        return {};
+    // The API may fill the buffer exactly, without a terminator.
+    ULONG chars = bytes / sizeof(WCHAR);
+    if (buffer[chars - 1] == L'\0') --chars;
+    return std::wstring(buffer, chars);
+}
+
+// The USB device that owns a card-reader slot, stopping before a hub so two
+// sticks on the same hub are not treated as one reader. A composite reader's
+// MI_ interfaces are walked through so every slot shares the reader node.
+struct ReaderNode {
+    std::wstring id;
+    std::wstring name;
+};
+
+ReaderNode CardReaderOf(DEVINST disk) {
+    ReaderNode best;
+    DEVINST node = disk;
+    for (int depth = 0; depth < 8 && node; ++depth) {
+        DEVINST parent = 0;
+        if (CM_Get_Parent(&parent, node, 0) != CR_SUCCESS || !parent || parent == node) break;
+        WCHAR id[MAX_DEVICE_ID_LEN]{};
+        if (CM_Get_Device_IDW(parent, id, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS) break;
+        const std::wstring service = NodeRegistryString(parent, CM_DRP_SERVICE);
+        if (str::EqualsI(service, L"usbhub") || str::EqualsI(service, L"usbhub3")) break;
+        const bool usbDevice = _wcsnicmp(id, L"USB\\", 4) == 0;
+        if (usbDevice) {
+            best.id = id;
+            best.name = NodeRegistryString(parent, CM_DRP_FRIENDLYNAME);
+            if (best.name.empty()) best.name = NodeRegistryString(parent, CM_DRP_DEVICEDESC);
+        }
+        node = parent;
+        if (usbDevice && id[4] != L'\0' && wcsstr(id, L"&MI_") == nullptr) break;
+    }
+    return best;
+}
+
 struct DiskQuery {
     ULONG deviceNumber = 0xFFFFFFFF;
     ULONG storageBusType = 0xFFFFFFFF;
@@ -390,6 +433,11 @@ bool DeviceManager::Refresh() {
         device.vendor = disk.vendor;
         device.product = disk.product;
         device.displayName = BuildDisplayName(disk);
+        if (disk.devInst && (disk.driverMediaRemovable == true || disk.removableMedia)) {
+            const auto reader = CardReaderOf(disk.devInst);
+            device.readerId = reader.id;
+            device.readerName = reader.name;
+        }
         next.push_back(std::move(device));
     }
 

@@ -11,6 +11,8 @@ inline json::Value DeviceJson(const Device& device) {
     Value row = Value::Object();
     row.Set(L"instanceId", Value::String(device.instanceId));
     row.Set(L"displayName", Value::String(device.displayName));
+    row.Set(L"readerId", Value::String(device.readerId));
+    row.Set(L"readerName", Value::String(device.readerName));
     row.Set(L"volumeLabel", Value::String(device.volumeLabel));
     row.Set(L"bus", Value::String(BusTypeName(device.busType)));
     row.Set(L"removable", Value::Bool(device.removable));
