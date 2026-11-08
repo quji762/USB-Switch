@@ -40,7 +40,6 @@ public:
     Value& At(std::wstring_view key);
 
     void Set(std::wstring_view key, Value value);
-    void Erase(std::wstring_view key);
     std::vector<std::wstring> Keys() const;
 
     bool GetBool(std::wstring_view key, bool fallback) const;

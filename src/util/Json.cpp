@@ -201,12 +201,17 @@ private:
         if (Peek() == L'-') ++pos_;
         if (pos_ >= text_.size()) return false;
 
-        size_t intDigits = 0;
-        while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+        // RFC 8259 integer part: int = "0" / digit1-9 *DIGIT, so a leading zero
+        // may only stand alone ("0", "0.5" and "0e1" are fine; "01" is not).
+        if (text_[pos_] < L'0' || text_[pos_] > L'9') return false;  // no integer part
+        if (text_[pos_] == L'0') {
             ++pos_;
-            ++intDigits;
+            if (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') return false;
+        } else {
+            while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+                ++pos_;
+            }
         }
-        if (intDigits == 0) return false;  // no integer part
 
         if (pos_ < text_.size() && text_[pos_] == L'.') {
             ++pos_;
@@ -247,6 +252,7 @@ private:
             wchar_t c = text_[pos_++];
             if (c == L'"') return true;
             if (c != L'\\') {
+                if (c < 0x20) return false;  // RFC 8259: control characters must be escaped
                 out.push_back(c);
                 continue;
             }
@@ -279,6 +285,9 @@ private:
                             return false;
                         }
                     }
+                    // A code still in the low-surrogate range was not consumed
+                    // as part of a pair above, so it would be a lone surrogate.
+                    if (code >= 0xDC00 && code <= 0xDFFF) return false;
                     AppendUtf32(out, code);
                     break;
                 }
@@ -389,16 +398,6 @@ Value& Value::At(std::wstring_view key) {
 
 void Value::Set(std::wstring_view key, Value value) {
     At(key) = std::move(value);
-}
-
-void Value::Erase(std::wstring_view key) {
-    if (type_ != Type::Object) return;
-    for (auto it = object_.begin(); it != object_.end(); ++it) {
-        if (it->first == key) {
-            object_.erase(it);
-            return;
-        }
-    }
 }
 
 std::vector<std::wstring> Value::Keys() const {

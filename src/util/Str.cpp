@@ -17,10 +17,6 @@ namespace {
 
 constexpr size_t kFormatLimit = 8 * 1024;
 
-bool IsDriveLetter(wchar_t c) {
-    return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z');
-}
-
 }  // namespace
 std::wstring FromUtf8(std::string_view utf8) {
     if (utf8.empty()) return {};
@@ -108,38 +104,9 @@ bool EqualsI(std::wstring_view a, std::wstring_view b) {
     return true;
 }
 
-bool StartsWithI(std::wstring_view s, std::wstring_view prefix) {
-    if (s.size() < prefix.size()) return false;
-    return EqualsI(s.substr(0, prefix.size()), prefix);
-}
-
 bool EndsWithI(std::wstring_view s, std::wstring_view suffix) {
     if (s.size() < suffix.size()) return false;
     return EqualsI(s.substr(s.size() - suffix.size()), suffix);
-}
-
-std::wstring ReplaceAll(std::wstring_view s, std::wstring_view from, std::wstring_view to) {
-    if (from.empty()) return std::wstring(s);
-    std::wstring out;
-    out.reserve(s.size());
-    size_t pos = 0;
-    while (pos < s.size()) {
-        if (pos + from.size() <= s.size() && s.substr(pos, from.size()) == from) {
-            out.append(to);
-            pos += from.size();
-        } else {
-            out.push_back(s[pos]);
-            ++pos;
-        }
-    }
-    return out;
-}
-
-std::wstring DriveRootOf(std::wstring_view path) {
-    if (path.size() >= 2 && IsDriveLetter(path[0]) && path[1] == L':') {
-        return std::wstring(path.substr(0, 2));
-    }
-    return {};
 }
 
 std::wstring FileSizeString(unsigned long long bytes) {
@@ -155,6 +122,12 @@ std::wstring FileSizeString(unsigned long long bytes) {
         // %ls, not %s: in the wprintf family %s already means a wide string,
         // and %ls states it explicitly.
         return str::Format(L"%llu %ls", bytes, units[0]);
+    }
+    // One decimal rounds up at .95: without a carry, 1048575 bytes would show
+    // as "1024 KB" while 1048576 shows as "1 MB".
+    if (value >= 1023.95 && unit < kMaxUnit) {
+        value /= 1024.0;
+        ++unit;
     }
     // One decimal, dropping a trailing ".0" so "512.0 MB" prints as "512 MB".
     std::wstring text = str::Format(L"%.1f", value);

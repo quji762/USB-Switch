@@ -25,13 +25,7 @@ std::wstring Trim(std::wstring_view s);
 std::wstring Lower(std::wstring_view s);
 
 bool EqualsI(std::wstring_view a, std::wstring_view b);
-bool StartsWithI(std::wstring_view s, std::wstring_view prefix);
 bool EndsWithI(std::wstring_view s, std::wstring_view suffix);
-
-std::wstring ReplaceAll(std::wstring_view s, std::wstring_view from, std::wstring_view to);
-
-// "D:\Foo" -> "D:", "\\?\Volume{...}\" -> "" (no drive letter form).
-std::wstring DriveRootOf(std::wstring_view path);
 
 // A volume mount point is a drive letter only when it is exactly "X:\\".
 // Directory mount points such as "C:\\mnt\\usb\\" refer to a different
