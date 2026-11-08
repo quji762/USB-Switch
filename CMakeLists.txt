@@ -16,6 +16,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT MSVC)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# CI turns this on so a new warning fails the build instead of scrolling by.
+option(QE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+
 set(QUICKEJECT_RC_VERSION
     "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
 
@@ -75,6 +78,7 @@ set(QUICKEJECT_SOURCES
     src/core/DeviceManager.cpp
     src/core/MediaEject.cpp
     src/core/OpenFiles.cpp
+    src/core/SmartInfo.cpp
     src/core/UsbPort.cpp
     src/core/DeviceNotifier.cpp
     src/core/VetoEvents.cpp
@@ -139,6 +143,9 @@ target_link_libraries(usb-switch PRIVATE
 
 if(MSVC)
     target_compile_options(usb-switch PRIVATE /W4 /permissive- /utf-8)
+    if(QE_WARNINGS_AS_ERRORS)
+        target_compile_options(usb-switch PRIVATE /WX)
+    endif()
     set_property(TARGET usb-switch PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     # MSVC's linker embeds a manifest itself. Supply ours to the linker so it
     # merges the manifests instead of emitting a second resource with id 1.
@@ -146,6 +153,9 @@ if(MSVC)
     target_link_options(usb-switch PRIVATE "/MANIFESTINPUT:${QUICKEJECT_MANIFEST_PATH}")
 else()
     target_compile_options(usb-switch PRIVATE -Wall -Wextra)
+    if(QE_WARNINGS_AS_ERRORS)
+        target_compile_options(usb-switch PRIVATE -Werror)
+    endif()
     # wWinMain + no console window for a subsystem:windows executable.
     # -static keeps the binary self-contained: no libgcc/libstdc++/winpthread
     # DLLs have to ship next to usb-switch.exe.
