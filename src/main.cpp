@@ -1,8 +1,8 @@
 // Entry point.
 //
 // The binary is a GUI subsystem application (no console window flashes on
-// start) that still supports command line use: --list, --eject, --version and
-// --help attach to the parent process' console when one exists.
+// start) that still supports command line use: --list, --eject, --eject-media,
+// --files, --json, --version and --help attach to the parent console when one exists.
 
 #include <windows.h>
 
@@ -54,6 +54,8 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
         // Both "--eject E:" and "--eject=E:" are accepted.
         const bool isEject = argument == L"--eject" || argument == L"-e" ||
                              argument.rfind(L"--eject=", 0) == 0;
+        const bool isEjectMedia = argument == L"--eject-media" ||
+                                  argument.rfind(L"--eject-media=", 0) == 0;
         if (argument == L"--list" || argument == L"-l") {
             options.listDevices = true;
             if (i + 1 < argc && std::wstring_view(argv[i + 1]) == L"--json") {
@@ -68,10 +70,12 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
             options.openSettings = true;
         } else if (argument == L"--minimized") {
             options.minimized = true;
-        } else if (isEject || argument == L"--eject-media") {
-            options.mediaOnly = argument == L"--eject-media";
+        } else if (isEject || isEjectMedia) {
+            options.mediaOnly = isEjectMedia;
             if (argument.rfind(L"--eject=", 0) == 0) {
                 options.ejectTarget = argument.substr(8);
+            } else if (argument.rfind(L"--eject-media=", 0) == 0) {
+                options.ejectTarget = argument.substr(14);
             } else if (i + 1 < argc && argv[i + 1][0] != L'-') {
                 options.ejectTarget = argv[++i];
             } else {
@@ -241,7 +245,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv == nullptr) {
-        MessageBoxW(nullptr, L"CommandLineToArgvW failed", QUICKEJECT_APP_NAME_W, MB_OK | MB_ICONERROR);
+        // Settings are not loaded yet, so resolve the language from the OS UI.
+        qe::i18n::I18n::Instance().Init(L"auto");
+        MessageBoxW(nullptr, qe::i18n::I18n::Instance().Get(qe::i18n::StrId::ErrorCommandLineParse),
+                    QUICKEJECT_APP_NAME_W, MB_OK | MB_ICONERROR);
         return 1;
     }
     if (argc == 6 && std::wstring_view(argv[1]) == L"--file-worker") {

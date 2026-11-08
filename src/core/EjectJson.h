@@ -11,6 +11,7 @@ inline json::Value EjectJson(const EjectResult& result, const std::wstring& inst
     if (result.Succeeded()) status = L"ejected";
     else if (result.status == EjectStatus::Vetoed) status = L"vetoed";
     else if (result.status == EjectStatus::Ineligible) status = L"ineligible";
+    else if (result.status == EjectStatus::ScanUnavailable) status = L"enumeration_failed";
     out.Set(L"status", Value::String(status));
     out.Set(L"instanceId", Value::String(instanceId));
     out.Set(L"retryable", Value::Bool(result.CanRetry()));

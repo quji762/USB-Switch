@@ -16,7 +16,8 @@ namespace qe {
 
 enum class EjectStatus {
     Success,
-    Ineligible, // unavailable, system disk, or could not verify current inventory
+    Ineligible, // unavailable, system disk, or not in the verified inventory
+    ScanUnavailable, // the pre-request rescan failed; the request was not attempted
     Vetoed,   // refused by the PnP manager, vetoType says why
     Failed,   // the call itself failed
 };

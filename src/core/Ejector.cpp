@@ -58,8 +58,15 @@ EjectResult Ejector::Eject(const std::wstring& instanceId) {
 
     // Confirmation and retry dialogs can outlive the original scan. Recheck
     // eligibility before every request, even for callers holding an instance ID.
+    // A failed rescan is not the same as a gone device: one may clear on its
+    // own, the other makes the target genuinely un-ejectable.
     DeviceManager current;
-    if (!current.Refresh() || !current.FindByInstanceId(instanceId)) {
+    if (!current.Refresh()) {
+        result.status = EjectStatus::ScanUnavailable;
+        QE_LOG_WARN(L"eject aborted: the device list is temporarily unavailable");
+        return result;
+    }
+    if (!current.FindByInstanceId(instanceId)) {
         result.status = EjectStatus::Ineligible;
         return result;
     }
@@ -169,6 +176,8 @@ DWORD Ejector::RestartStopped(const std::wstring& diskId, const std::wstring& ta
 std::wstring Ejector::Describe(const EjectResult& result) {
     const auto& strings = i18n::I18n::Instance();
 
+    if (result.status == EjectStatus::ScanUnavailable)
+        return strings.Get(i18n::StrId::ErrorEnumFailed);
     if (result.status == EjectStatus::Ineligible) return strings.Get(i18n::StrId::EjectIneligible);
     if (result.status == EjectStatus::Vetoed) {
         std::wstring reason;
