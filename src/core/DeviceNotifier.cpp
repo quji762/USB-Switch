@@ -99,7 +99,12 @@ std::wstring DeviceNotifier::DescribeChange(UINT event, LPARAM data) {
             return str::Format(L"%ls (truncated interface payload)", action);
         }
         const auto* interfaceChange = reinterpret_cast<const DEV_BROADCAST_DEVICEINTERFACE_W*>(data);
-        return str::Format(L"%ls of interface %ls", action, interfaceChange->dbcc_name);
+        // dbcc_name is only as long as the payload says; cap the scan so a
+        // truncated broadcast cannot read past it.
+        const size_t available =
+            (header->dbch_size - offsetof(DEV_BROADCAST_DEVICEINTERFACE_W, dbcc_name)) / sizeof(WCHAR);
+        std::wstring name(interfaceChange->dbcc_name, wcsnlen(interfaceChange->dbcc_name, available));
+        return str::Format(L"%ls of interface %ls", action, name.c_str());
     }
     return str::Format(L"%ls (type %lu)", action, header->dbch_devicetype);
 }

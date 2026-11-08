@@ -58,8 +58,12 @@ Value Scan(const std::wstring& id, DWORD pid, FILETIME before) {
     PSS_HANDLE_ENTRY entry{};
     while ((err=PssWalkSnapshot(s.snap,PSS_WALK_HANDLES,s.walk,&entry,sizeof(entry)))==ERROR_SUCCESS) {
         // PSS may count the trailing NUL in TypeNameLength. File handles do
-        // not necessarily have an ObjectName in the snapshot.
-        if (!entry.TypeName || entry.TypeNameLength < 4*sizeof(WCHAR) || entry.TypeNameLength > 5*sizeof(WCHAR) || wcsncmp(entry.TypeName,L"File",4)) continue;
+        // not necessarily have an ObjectName in the snapshot. The last clause
+        // rejects a hypothetical five-character type that merely starts with
+        // "File" and stores no terminator.
+        if (!entry.TypeName || entry.TypeNameLength < 4*sizeof(WCHAR) || entry.TypeNameLength > 5*sizeof(WCHAR) ||
+            wcsncmp(entry.TypeName,L"File",4) ||
+            (entry.TypeNameLength == 5*sizeof(WCHAR) && entry.TypeName[4] != L'\0')) continue;
         HANDLE raw{};
         if (!DuplicateHandle(proc.Get(),entry.Handle,GetCurrentProcess(),&raw,0,FALSE,0)) { partial=true; continue; }
         Handle file(raw);
@@ -114,6 +118,24 @@ Value TimedScan(const std::wstring& id,DWORD pid,FILETIME before, ULONGLONG dead
     size_t len=wcsnlen(out.ptr,chars);
     if (!GetExitCodeProcess(process.Get(),&code) || code || len==chars ||
         !Value::Parse(std::wstring_view(out.ptr,len),r) || !r.IsObject()) return Report(L"unavailable");
+    // The mapping name travels on the child's command line, so any same-session
+    // process could write to it during the wait. Accept only exactly the schema
+    // Scan() produces, with the caps Scan() itself enforces.
+    static constexpr const wchar_t* kStatuses[] = {L"inspected", L"partial", L"access_denied",
+        L"timeout", L"process_changed", L"device_unavailable", L"unavailable"};
+    const Value* status = r.Find(L"status");
+    bool known = false;
+    if (status && status->IsString())
+        for (const wchar_t* candidate : kStatuses)
+            if ((known = status->AsString() == candidate)) break;
+    const Value* paths = r.Find(L"paths");
+    if (!known || !paths || !paths->IsArray() || paths->Size() > 32) return Report(L"unavailable");
+    for (const auto& path : paths->Items()) {
+        if (!path.IsString() || path.AsString().empty() || path.AsString().size() > 2048)
+            return Report(L"unavailable");
+        for (wchar_t c : path.AsString())
+            if (c < 0x20) return Report(L"unavailable");
+    }
     return r;
 }
 }

@@ -10,22 +10,9 @@
 #include "i18n/I18n.h"
 #include "i18n/Strings.h"
 #include "util/Str.h"
+#include "util/Win32.h"
 
 namespace qe {
-namespace {
-
-std::wstring EnvironmentOr(std::wstring_view name, std::wstring_view fallback) {
-    DWORD length = GetEnvironmentVariableW(std::wstring(name).c_str(), nullptr, 0);
-    if (length == 0) return std::wstring(fallback);
-    std::wstring value(static_cast<size_t>(length), L'\0');
-    const DWORD copied =
-        GetEnvironmentVariableW(std::wstring(name).c_str(), value.data(), length);
-    if (copied == 0 || copied >= length) return std::wstring(fallback);
-    value.resize(copied);
-    return value;
-}
-
-}  // namespace
 
 std::wstring LogDirectory() {
     std::wstring local = EnvironmentOr(L"LOCALAPPDATA", L"");

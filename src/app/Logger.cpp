@@ -29,6 +29,31 @@ std::wstring Timestamp() {
                        time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
 }
 
+// Device names and volume labels are external data; a label containing a raw
+// CR/LF would forge extra log lines. Escape control characters below 0x20
+// (keeping '\t' for readability) so every record stays exactly one line.
+std::wstring SanitizeMessage(const std::wstring& text) {
+    bool plain = true;
+    for (wchar_t ch : text) {
+        if (ch < 0x20 && ch != L'\t') { plain = false; break; }
+    }
+    if (plain) return text;
+    static const wchar_t* kHexDigits = L"0123456789ABCDEF";
+    std::wstring clean;
+    clean.reserve(text.size());
+    for (wchar_t ch : text) {
+        if (ch < 0x20 && ch != L'\t') {
+            clean.push_back(L'\\');
+            clean.push_back(L'x');
+            clean.push_back(kHexDigits[(ch >> 4) & 0xF]);
+            clean.push_back(kHexDigits[ch & 0xF]);
+        } else {
+            clean.push_back(ch);
+        }
+    }
+    return clean;
+}
+
 }  // namespace
 
 Logger& Logger::Instance() {
@@ -47,8 +72,16 @@ void Logger::Init(const std::wstring& directory, std::wstring_view baseName) {
     if (!path_.empty() && path_.back() != L'\\') path_.push_back(L'\\');
     path_.append(baseName);
 
-    HANDLE file = CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    // The log is opened with FILE_SHARE_READ only, so a second process racing
+    // on the same file (two CLI runs) fails its first open. Retry briefly
+    // before giving up and silently logging nowhere.
+    HANDLE file = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (attempt > 0) Sleep(50);
+        file = CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) break;
+    }
     if (file == INVALID_HANDLE_VALUE) {
         path_.clear();
         return;
@@ -79,7 +112,8 @@ void Logger::Log(LogLevel level, const wchar_t* format, ...) {
 
     // Format outside the lock: only the write needs to be serialized.
     const std::wstring line =
-        str::Format(L"%ls [%ls] %ls", Timestamp().c_str(), LevelTag(level), message.c_str());
+        str::Format(L"%ls [%ls] %ls", Timestamp().c_str(), LevelTag(level),
+                    SanitizeMessage(message).c_str());
     std::lock_guard<std::mutex> lock(mutex_);
     RotateIfNeededLocked();
     WriteLineLocked(line);

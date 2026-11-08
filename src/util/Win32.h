@@ -6,6 +6,9 @@
 #include <windows.h>
 #include <setupapi.h>  // HDEVINFO, SetupDiDestroyDeviceInfoList
 
+#include <string>
+#include <string_view>
+
 namespace qe {
 
 // Creates every missing directory in `path`, including the last component.
@@ -20,6 +23,21 @@ inline void CreateDirectories(const std::wstring& path) {
         CreateDirectoryW(path.substr(0, i).c_str(), nullptr);
     }
     CreateDirectoryW(path.c_str(), nullptr);
+}
+
+// Returns the value of the environment variable `name`, or `fallback` when it
+// is unset or empty. GetEnvironmentVariableW's two-call protocol counts the
+// terminating null in the length, so that handling lives here instead of being
+// repeated at every call site.
+inline std::wstring EnvironmentOr(std::wstring_view name, std::wstring_view fallback) {
+    DWORD length = GetEnvironmentVariableW(std::wstring(name).c_str(), nullptr, 0);
+    if (length == 0) return std::wstring(fallback);
+    std::wstring value(static_cast<size_t>(length), L'\0');
+    const DWORD copied =
+        GetEnvironmentVariableW(std::wstring(name).c_str(), value.data(), length);
+    if (copied == 0 || copied >= length) return std::wstring(fallback);
+    value.resize(copied);
+    return value;
 }
 
 // Closes a kernel HANDLE (no-op for nullptr / INVALID_HANDLE_VALUE).

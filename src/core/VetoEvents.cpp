@@ -21,7 +21,9 @@ std::vector<ReportedProcess> ReadVetoEvents(const std::wstring& disk, const std:
     if (!ctx) return result;
     // The Event Log service may publish slightly after CM returns. Never use an
     // older same-device event just because this request has no recorded process.
-    for (int pass = 0; pass < 8 && result.empty(); ++pass) {
+    // Four passes keep the worst case (no matching event at all) near a second:
+    // this runs on the UI thread while the veto dialog is being built.
+    for (int pass = 0; pass < 4 && result.empty(); ++pass) {
         if (pass) Sleep(200);
         Event query(EvtQuery(nullptr, L"System",
             L"*[System[Provider[@Name='Microsoft-Windows-Kernel-PnP'] and EventID=225 and TimeCreated[timediff(@SystemTime) <= 60000]]]",
@@ -29,7 +31,7 @@ std::vector<ReportedProcess> ReadVetoEvents(const std::wstring& disk, const std:
         if (!query) break;
         for (int i = 0; i < 64 && result.size() < 8; ++i) {
             EVT_HANDLE raw{}; DWORD count{};
-            if (!EvtNext(query.get(), 1, &raw, 100, 0, &count)) break;
+            if (!EvtNext(query.get(), 1, &raw, 50, 0, &count)) break;
             Event event(raw);
             DWORD size{}, n{};
             EvtRender(ctx.get(), event.get(), EvtRenderEventValues, 0, nullptr, &size, &n);
