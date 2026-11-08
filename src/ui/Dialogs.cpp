@@ -93,7 +93,7 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
             HWND keys = GetDlgItem(hwnd, IDC_SET_KEY);
             SendMessageW(keys, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(strings.Get(i18n::StrId::HotkeyOff)));
             for (wchar_t letter = L'A'; letter <= L'Z'; ++letter) {
-                auto label = std::wstring(L"Ctrl + Alt + ") + letter;
+                auto label = strings.Format(i18n::StrId::HotkeyCtrlAlt, std::wstring(1, letter));
                 SendMessageW(keys, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
             }
             SendMessageW(keys, CB_SETCURSEL, settings.menuHotkey.empty() ? 0 : settings.menuHotkey[0] - L'A' + 1, 0);
@@ -167,9 +167,9 @@ INT_PTR CALLBACK SettingsDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
                     const bool owned = actual == AutoStart::Entry::Owned;
                     SetWindowLongPtrW(hwnd, DWLP_USER, owned);
                     CheckDlgButton(hwnd, IDC_SET_STARTUP, owned ? BST_CHECKED : BST_UNCHECKED);
-                    MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsStartupFailed),
-                                strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONWARNING);
                 }
+                // One warning for the failed save; the corrected checkbox above
+                // already shows the real startup-entry state.
                 settings = previous;
                 MessageBoxW(hwnd, strings.Get(i18n::StrId::SettingsSaveFailed),
                             strings.Get(i18n::StrId::SettingsTitle), MB_OK | MB_ICONERROR);
