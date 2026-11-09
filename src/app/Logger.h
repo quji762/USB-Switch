@@ -10,6 +10,16 @@
 // callback may run on any thread, and a real implementation (WinHTTP on a
 // worker thread) will log from there - without the lock two writers would race
 // on file_ and path_.
+//
+// When the named file is already held open by another process (the resident
+// tray owns usb-switch.log), Init falls back to a per-process name such as
+// usb-switch.1234.log rather than logging nowhere.
+//
+// Those per-process files do not accumulate: every Init prunes the directory
+// down to the newest handful of them, so a machine that keeps losing the race
+// for the shared name ends up with a bounded directory rather than one file
+// per launch. The shared names are never candidates - see
+// PrunePerProcessLogs in Logger.cpp for the matching rule and why it is safe.
 
 #include <mutex>
 #include <string>
@@ -45,6 +55,10 @@ private:
     void CloseFileLocked();
 
     unsigned long long retryRotationAfter_ = 0;
+    // A write that failed (full disk, dead handle) is reported once per
+    // failure episode: the log cannot report itself, so OutputDebugString is
+    // used, and one message per episode keeps a full disk from flooding it.
+    bool writeErrorReported_ = false;
     std::wstring path_;
     void* file_ = nullptr;  // HANDLE, kept opaque so this header stays light
     std::mutex mutex_;

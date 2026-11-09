@@ -54,9 +54,16 @@ InitStatus App::Init(bool openSettings) {
         const auto slash = command.find_last_of(L"\\/");
         if (slash != std::wstring::npos) {
             const auto legacy = command.substr(0, slash + 1) + L"quickeject.exe\"";
-            if (AutoStart::Inspect(L"QuickEject", legacy) == AutoStart::Entry::Owned &&
-                AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command))
-                AutoStart::ClearIfMatches(L"QuickEject", legacy);
+            if (AutoStart::Inspect(L"QuickEject", legacy) == AutoStart::Entry::Owned) {
+                // A refused write leaves the legacy entry in place while the
+                // setting claims startup is on; say so instead of letting the
+                // next launch rediscover it with no trace.
+                if (AutoStart::SetEnabled(QUICKEJECT_APP_NAME_W, command))
+                    AutoStart::ClearIfMatches(L"QuickEject", legacy);
+                else
+                    QE_LOG_WARN(L"could not migrate the QuickEject startup entry to %ls",
+                                command.c_str());
+            }
         }
     }
 
@@ -81,7 +88,11 @@ int App::Run() {
         // result < 0 is an error (for example an invalid window handle); log it
         // instead of exiting silently.
         QE_LOG_ERROR(L"GetMessage failed: %lu", GetLastError());
-        break;
+        // GetMessageW does not fill the MSG on failure, so message still holds
+        // whatever the last dispatch left there (zero on a fresh loop):
+        // returning message.wParam would report a clean exit for a loop that
+        // never received WM_QUIT. A failure exit code is the honest answer.
+        return 1;
     }
     return static_cast<int>(message.wParam);
 }

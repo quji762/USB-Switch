@@ -58,10 +58,16 @@ void SingleInstance::Release() noexcept {
 bool SingleInstance::SignalExisting(std::wstring_view windowClassName, bool openSettings) {
     const std::wstring name(windowClassName);
     // The first process can own the mutex before its tray window exists, so a
-    // --settings request waits for the window. Windows failing the ownership
-    // check are skipped and the search continues.
+    // request waits for the window. --settings waits longer because the user
+    // asked for something specific; a plain launch only needs to reach a window
+    // that is already there, so it gives up sooner. Either way the wait is
+    // bounded (and only happens when no window is up yet), so a second launch
+    // never feels slow. Windows failing the ownership check are skipped and the
+    // search continues.
+    constexpr int kSettingsAttempts = 40;  // 2 s
+    constexpr int kWakeAttempts = 10;      // 0.5 s
     HWND existing = nullptr;
-    for (int i = 0; openSettings ? i < 40 : i < 1; ++i) {
+    for (int i = 0; i < (openSettings ? kSettingsAttempts : kWakeAttempts); ++i) {
         if (i) Sleep(50);
         HWND found = FindWindowW(name.c_str(), nullptr);
         if (found && OwnedByThisExecutable(found)) {
