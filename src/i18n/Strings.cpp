@@ -218,6 +218,14 @@ const Entry kStrings[] = {
      L"Could not create the system tray icon; USB-Switch cannot start. Check that Windows Explorer is running."},
     {StrId::ErrorCommandLineParse, L"无法解析命令行参数，USB-Switch 无法启动。",
      L"Could not parse the command line; USB-Switch cannot start."},
+
+    // Reconnect and card-eject status
+    {StrId::ReconnectRebootPending, L"重新连接的请求已排入队列，将在系统重启后生效。",
+     L"The reconnection request has been queued and will take effect after the system restarts."},
+    {StrId::DeviceReappeared, L"设备已自行恢复连接，无需重新连接。",
+     L"The device has reconnected on its own; reconnection is not needed."},
+    {StrId::MediaEjectMultiExtent, L"该卷跨越多个物理磁盘（跨区卷、带区卷或镜像卷），USB-Switch 不支持退出此类布局中的存储卡。",
+     L"This volume spans several physical disks (spanned, striped or mirrored); USB-Switch cannot eject the card in such a layout."},
 };
 
 static_assert(static_cast<size_t>(StrId::kCount) == std::size(kStrings),

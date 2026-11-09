@@ -159,6 +159,11 @@ enum class StrId {
     ErrorTrayCreation,
     ErrorCommandLineParse,
 
+    // Reconnect and card-eject status
+    ReconnectRebootPending,
+    DeviceReappeared,
+    MediaEjectMultiExtent,
+
     kCount
 };
 

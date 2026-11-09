@@ -41,7 +41,6 @@ struct Options {
     bool showVersion = false;
     bool usageError = false;  // unknown switch or missing argument
     bool openSettings = false;
-    bool minimized = false;   // accepted (Run key), no effect: always tray resident
     std::wstring ejectTarget;  // drive letter ("E:") or PnP instance id
 };
 
@@ -68,8 +67,6 @@ Options ParseOptions(int argc, const wchar_t* const* argv) {
             options.showVersion = true;
         } else if (argument == L"--settings") {
             options.openSettings = true;
-        } else if (argument == L"--minimized") {
-            options.minimized = true;
         } else if (isEject || isEjectMedia) {
             options.mediaOnly = isEjectMedia;
             if (argument.rfind(L"--eject=", 0) == 0) {
@@ -103,6 +100,10 @@ HANDLE g_output = nullptr;
 Handle g_attachedOutput;
 bool g_console = false;
 bool g_writeFailed = false;
+// Set when a command line run could not obtain any output handle at all (no
+// console to attach to and no redirected stdout): every PrintLine then no-ops,
+// so the run reports success for output nobody received.
+bool g_outputUnavailable = false;
 
 bool AttachOutput() {
     g_output = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -279,6 +280,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     qe::i18n::I18n::Instance().Init(qe::Settings::Instance().Data().language);
 
     if (commandLineAction && !qe::AttachOutput()) {
+        qe::g_outputUnavailable = true;
         QE_LOG_WARN(L"no output handle; command line output is unavailable");
     }
 
@@ -307,7 +309,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
     qe::Logger::Instance().Shutdown();
     LocalFree(argv);
-    // A successful removal stays successful even if its confirmation cannot be printed.
-    if (exitCode == 0 && options.ejectTarget.empty() && qe::g_writeFailed) return 1;
+    // A command that printed nothing did not do what was asked, whether the
+    // write failed halfway or there was never a handle to write to. A
+    // successful removal stays successful even if its confirmation cannot be
+    // printed: the device is gone either way.
+    if (exitCode == 0 && options.ejectTarget.empty() &&
+        (qe::g_writeFailed || qe::g_outputUnavailable))
+        return 1;
     return exitCode;
 }
