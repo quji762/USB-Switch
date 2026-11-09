@@ -1,10 +1,10 @@
 # 变更记录 / Changelog
 
-本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的格式。当前版本的行为以 [README](README.md) 为准；命令行的完整参考见 [docs/command-line.md](docs/command-line.md)。
+本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的格式；版本号取自 `CMakeLists.txt` 的 `project()` 版本。当前版本的行为以 [README](README.md) 为准，命令行的完整参考见 [docs/command-line.md](docs/command-line.md)。
 
-This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. Current behavior is documented in the [README](README.md).
+This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. The version number comes from the `project()` version in `CMakeLists.txt`. Current behavior is documented in the [README](README.md), and the full command-line reference is in [docs/command-line.md](docs/command-line.md).
 
-## 未发布 / Unreleased
+## [未发布] / [Unreleased]
 
 ### 新增 / Added
 
@@ -21,6 +21,10 @@ This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 - JSON 解析失败时给出偏移位置、期待的记号和实际的记号。
 - 设置保存改为原子写入，同一时刻的临时文件不再撞名。
 
+### 移除 / Removed
+
+- `--minimized` 参数：此前被接受但没有任何效果；无法识别的参数现在按用法错误处理（退出码 2）。
+
 ### 修复 / Fixed
 
 - 高对比度下按钮恢复系统原生样式（此前该分支永不可能执行）。
@@ -33,10 +37,6 @@ This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 - 日志写入失败时不再被静默吞掉。
 - SMART 读取失败时记录 sense 数据；温度描述符补上版本与长度校验。
 - `GetMessageW` 出错时托盘进程不再以退出码 0 结束。
-
-### 移除 / Removed
-
-- `--minimized` 参数：此前被接受但没有任何效果；无法识别的参数现在按用法错误处理（退出码 2）。
 
 ## [1.0.0]
 

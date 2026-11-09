@@ -51,9 +51,9 @@ This is the full reference for the command line. Everyday usage is in the [READM
 .\usb-switch.exe --list --json
 ```
 
-文本输出示例：
+文本输出示例（标题行随界面语言变化）：
 
-```
+```text
 USB-Switch 1.0.0 — removable devices
 [1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
     USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0

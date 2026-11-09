@@ -87,9 +87,15 @@ A Windows tray tool for safely removing USB storage. Pick the drive, eject it in
 
 **English:** CMake 3.16+ and any C++17 compiler. `.\build.ps1` detects the toolchain and collects the artifacts in `dist\`.
 
+## 获取帮助 / Getting help
+
+先打开托盘菜单的「打开日志文件夹」看日志（位置与内容说明见 [docs/command-line.md](docs/command-line.md#日志--logs)）。仍无法解决时，请到 [GitHub 仓库的问题页面](https://github.com/quji762/USB-Switch/issues) 反馈并附上日志——日志可能包含设备名称和实例 ID，分享前请自行检查。
+
+**English:** open **Open log folder** from the tray menu first (location and contents are described in [docs/command-line.md](docs/command-line.md#日志--logs)). If that does not resolve it, file an issue on the [GitHub repository](https://github.com/quji762/USB-Switch/issues) with the log attached — it can contain device names and instance IDs, so review it before sharing.
+
 ## 开发者 / For developers
 
-```
+```text
 src/
 ├── main.cpp            入口：参数解析、CLI 分发、消息循环
 ├── app/                应用外壳：启动顺序、单实例、设置、日志、开机自启
