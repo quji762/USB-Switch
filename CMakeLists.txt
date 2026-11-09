@@ -163,7 +163,11 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Install layout (used by `cmake --install`; the Inno Setup script mirrors it)
+# Install layout for `cmake --install`: the exe under CMAKE_INSTALL_BINDIR and
+# the docs under CMAKE_INSTALL_DOCDIR (bin/ + share/doc/usb-switch/). The Inno
+# Setup installer (installer/usb-switch.iss) is NOT this layout - it flattens
+# the exe, README and LICENSE straight into {app} - so the two are intentionally
+# different; do not assume they match.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 install(TARGETS usb-switch RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

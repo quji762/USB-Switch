@@ -53,6 +53,11 @@ jobs:
           python tests/cli-output.py $exe
           if ($LASTEXITCODE -ne 0) { throw 'CLI Unicode output checks failed' }
           ./tests/migration.ps1 -Exe $exe
+      - name: Run GUI smoke test
+        shell: pwsh
+        run: |
+          ./tests/gui-smoke.ps1 -Exe (Join-Path $PWD 'dist/usb-switch.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'GUI smoke test failed' }
       - name: Build and test installer
         shell: pwsh
         run: |
@@ -72,3 +77,26 @@ jobs:
             dist/usb-switch.exe
             dist/installer/*.exe
           if-no-files-found: ignore
+
+  msvc:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # Compiles the MSVC-only paths the MinGW job never touches: CMakeLists.txt
+      # /W4 /WX (QE_WARNINGS_AS_ERRORS), the static MSVC runtime, the linker
+      # /MANIFESTINPUT merge and the QE_MSVC_MANIFEST branch in version.rc.in.
+      - name: Build with MSVC (Visual Studio generator, warnings as errors)
+        shell: pwsh
+        run: |
+          cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64 -DQE_WARNINGS_AS_ERRORS=ON
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build build/msvc --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
+      - name: Check source strings and executable resources
+        shell: pwsh
+        run: |
+          python tools/check-strings.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source consistency check failed' }
+          python tools/check-resources.py build/msvc/Release/usb-switch.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Resource check failed' }

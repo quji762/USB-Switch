@@ -64,7 +64,20 @@ New-Item -ItemType Directory -Force -Path $genDir, $objDir, $distDir | Out-Null
 # Note: each .Replace() call is wrapped in parentheses. PowerShell 5.1's parser
 # treats a bare leading ".Replace(" at the start of a continuation line as a
 # command name, so this form is required for Windows PowerShell compatibility.
-$appInfo = Get-Content (Join-Path $root 'src\app\AppInfo.h.in') -Raw
+$appInfoTemplate = Get-Content (Join-Path $root 'src\app\AppInfo.h.in') -Raw
+
+# Product identity is parsed from AppInfo.h.in exactly as CMakeLists.txt does,
+# so this direct build and the CMake build can never drift on these four values.
+if ($appInfoTemplate -notmatch '#define QUICKEJECT_APP_NAME[ \t]+"([^"]*)"') { throw 'could not read QUICKEJECT_APP_NAME from src\app\AppInfo.h.in' }
+$appName = $Matches[1]
+if ($appInfoTemplate -notmatch '#define QUICKEJECT_APP_DESCRIPTION[ \t]+"([^"]*)"') { throw 'could not read QUICKEJECT_APP_DESCRIPTION from src\app\AppInfo.h.in' }
+$appDescription = $Matches[1]
+if ($appInfoTemplate -notmatch '#define QUICKEJECT_COMPANY[ \t]+"([^"]*)"') { throw 'could not read QUICKEJECT_COMPANY from src\app\AppInfo.h.in' }
+$company = $Matches[1]
+if ($appInfoTemplate -notmatch '#define QUICKEJECT_COPYRIGHT[ \t]+"([^"]*)"') { throw 'could not read QUICKEJECT_COPYRIGHT from src\app\AppInfo.h.in' }
+$copyright = $Matches[1]
+
+$appInfo = $appInfoTemplate
 $appInfo = ($appInfo.Replace('@PROJECT_VERSION_MAJOR@', $major))
 $appInfo = ($appInfo.Replace('@PROJECT_VERSION_MINOR@', $minor))
 $appInfo = ($appInfo.Replace('@PROJECT_VERSION_PATCH@', $patch))
@@ -81,11 +94,11 @@ $manifestPath = (Resolve-Path (Join-Path $root 'resources\app.manifest')).Path.R
 
 $resource = Get-Content (Join-Path $root 'resources\version.rc.in') -Raw
 $resource = ($resource.Replace('@QUICKEJECT_RC_VERSION@', "$major,$minor,$patch,0"))
-$resource = ($resource.Replace('@QUICKEJECT_COMPANY@', 'USB-Switch Project'))
-$resource = ($resource.Replace('@QUICKEJECT_APP_DESCRIPTION@', 'USB Safe Remove Tool'))
+$resource = ($resource.Replace('@QUICKEJECT_COMPANY@', $company))
+$resource = ($resource.Replace('@QUICKEJECT_APP_DESCRIPTION@', $appDescription))
 $resource = ($resource.Replace('@QUICKEJECT_VERSION@', $version))
-$resource = ($resource.Replace('@QUICKEJECT_APP_NAME@', 'USB-Switch'))
-$resource = ($resource.Replace('@QUICKEJECT_COPYRIGHT@', 'Copyright (c) 2026 USB-Switch Project'))
+$resource = ($resource.Replace('@QUICKEJECT_APP_NAME@', $appName))
+$resource = ($resource.Replace('@QUICKEJECT_COPYRIGHT@', $copyright))
 $resource = ($resource.Replace('@QUICKEJECT_ICON_PATH@', $iconPath))
 $resource = ($resource.Replace('@QUICKEJECT_MANIFEST_PATH@', $manifestPath))
 [System.IO.File]::WriteAllText((Join-Path $genDir 'version.rc'), $resource,

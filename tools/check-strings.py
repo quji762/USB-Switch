@@ -38,14 +38,101 @@ def enum_ids() -> list[str]:
     return [i for i in ids if i != "kCount"]
 
 
+def strip_comments(text: str) -> str:
+    """Drop // and /* */ comments without disturbing string literals.
+
+    The table only carries wide string literals, so a double quote is the one
+    delimiter that matters; a backslash escape inside a literal is skipped so a
+    \" can never end the string early. A URL such as "https://..." inside a
+    literal is therefore left alone, while a real comment is removed.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_string = False
+    while i < n:
+        c = text[i]
+        if in_string:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            out.append(c)
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i = min(i + 2, n)
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def split_columns(rest: str) -> tuple[str, str] | None:
+    """Split an entry body at the first comma that is not inside a literal.
+
+    Everything before that comma is the Chinese column and everything after it
+    the English one. A comma inside a string - or a fullwidth comma in Chinese
+    text - can never be mistaken for the separator, because the scan tracks
+    whether it is currently inside a quoted literal.
+    """
+    in_string = False
+    i = 0
+    n = len(rest)
+    while i < n:
+        c = rest[i]
+        if in_string:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            i += 1
+            continue
+        if c == ",":
+            return rest[:i], rest[i + 1:]
+        i += 1
+    return None
+
+
+def join_literals(source: str) -> str:
+    """Concatenate the wide-string literals in one column.
+
+    A macro such as QUICKEJECT_VERSION_STRING_W between two literals is simply
+    absent from the match: it expands to a version number and never carries a
+    %N placeholder, so skipping it keeps the two columns directly comparable.
+    """
+    return "".join(re.findall(r'L"((?:[^"\\]|\\.)*)"', source))
+
+
 def table_entries() -> list[tuple[str, str, str]]:
     """Parse the table into (id, zh, en) triples.
 
-    Entries may concatenate several adjacent string literals per language, and
-    zh/en are told apart by CJK content, so the parser does not depend on the
-    source formatting.
+    The two columns are found structurally: the first top-level comma in the
+    entry separates them, and each column may be several adjacent literals
+    joined together. The result no longer depends on guessing a language from
+    CJK content, so entries whose two columns share a language (e.g. the
+    language names themselves) parse correctly.
     """
-    text = read(STRINGS_CPP)
+    text = strip_comments(read(STRINGS_CPP))
     body = text.split("const Entry kStrings[] = {", 1)[1].split("\n};", 1)[0]
     positions = [m.start() for m in re.finditer(r"\{StrId::\w+,", body)]
 
@@ -53,22 +140,18 @@ def table_entries() -> list[tuple[str, str, str]]:
     for index, start in enumerate(positions):
         end = positions[index + 1] if index + 1 < len(positions) else len(body)
         span = body[start:end]
-        identifier = re.match(r"\{StrId::(\w+),", span).group(1)
-        literals = re.findall(r'L"((?:[^"\\]|\\.)*)"', span)
-        zh = "".join(l for l in literals if has_cjk(l))
-        en = "".join(l for l in literals if not has_cjk(l))
-        entries.append((identifier, zh, en))
+        header = re.match(r"\{StrId::(\w+),", span)
+        identifier = header.group(1)
+        columns = split_columns(span[header.end():])
+        if columns is None:
+            entries.append((identifier, "", ""))
+            continue
+        entries.append((identifier, join_literals(columns[0]), join_literals(columns[1])))
     return entries
 
 
 def placeholders(literal: str) -> set[str]:
     return set(re.findall(r"%[123]", literal))
-
-
-def has_cjk(text: str) -> bool:
-    return any(
-        "\u3000" <= ch <= "\u9fff" or "\uff00" <= ch <= "\uffef" for ch in text
-    )
 
 
 def main() -> int:
@@ -94,12 +177,14 @@ def main() -> int:
             problems.append(f"duplicate table entry: {identifier}")
         seen.add(identifier)
         for language, literal in (("zh", zh), ("en", en)):
-            if literal in ('L""', 'L"\\0"'):
+            if not literal:
                 problems.append(f"{identifier}: empty {language} text")
-        if placeholders(zh) != placeholders(en):
+        zh_placeholders = placeholders(zh)
+        en_placeholders = placeholders(en)
+        if zh_placeholders != en_placeholders:
             problems.append(
-                f"{identifier}: placeholder mismatch zh={sorted(placeholders(zh))} "
-                f"en={sorted(placeholders(en))}"
+                f"{identifier}: placeholder mismatch zh={sorted(zh_placeholders)} "
+                f"en={sorted(en_placeholders)}"
             )
 
     # --- 2. CMake source list vs files on disk ----------------------------

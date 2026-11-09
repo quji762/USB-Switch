@@ -119,6 +119,25 @@ def read_version_strings(data: bytes, offset: int, size: int) -> dict[str, str]:
     return values
 
 
+def app_info_values() -> dict[str, str]:
+    """Read the product identity from src/app/AppInfo.h.in.
+
+    CMakeLists.txt and tools/build-no-cmake.ps1 both parse this one template
+    for the version resource, so checking the exe against the same file is what
+    catches drift between the two build paths. The version number itself is a
+    @PROJECT_VERSION@ placeholder here, so it is read from CMakeLists.txt.
+    """
+    path = Path(__file__).resolve().parents[1] / "src" / "app" / "AppInfo.h.in"
+    text = path.read_text(encoding="utf-8")
+    values: dict[str, str] = {}
+    for name in ("QUICKEJECT_APP_NAME", "QUICKEJECT_APP_DESCRIPTION",
+                 "QUICKEJECT_COMPANY", "QUICKEJECT_COPYRIGHT"):
+        match = re.search(rf'#define\s+{name}\s+"([^"]*)"', text)
+        if match:
+            values[name] = match.group(1)
+    return values
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: check-resources.py <exe>")
@@ -165,14 +184,24 @@ def main() -> int:
 
     cmake = (Path(__file__).resolve().parents[1] / "CMakeLists.txt").read_text(encoding="utf-8")
     version = re.search(r"project\(usb-switch\s+VERSION\s+(\d+\.\d+\.\d+)", cmake).group(1)
+    app_info = app_info_values()
+    # The .rc template maps these resource strings to the AppInfo.h.in defines;
+    # OriginalFilename is a literal in the template and stays unchecked here.
+    expected = {
+        "CompanyName": app_info["QUICKEJECT_COMPANY"],
+        "ProductName": app_info["QUICKEJECT_APP_NAME"],
+        "InternalName": app_info["QUICKEJECT_APP_NAME"],
+        "FileDescription": app_info["QUICKEJECT_APP_DESCRIPTION"],
+        "LegalCopyright": app_info["QUICKEJECT_COPYRIGHT"],
+        "FileVersion": version,
+    }
     # Version strings sanity check.
     for _name, offset, size in resources.get(RT_VERSION, []):
         values = read_version_strings(data, offset, size)
-        for key, expected in (("CompanyName", "USB-Switch Project"),
-                              ("ProductName", "USB-Switch"),
-                              ("FileVersion", version)):
-            if values.get(key) != expected:
-                problems.append(f"version resource: {key} is {values.get(key)!r}, expected {expected!r}")
+        for key, expected_value in expected.items():
+            if values.get(key) != expected_value:
+                problems.append(
+                    f"version resource: {key} is {values.get(key)!r}, expected {expected_value!r}")
         print("  version strings: " + ", ".join(f"{k}={v}" for k, v in values.items()))
 
     if problems:
