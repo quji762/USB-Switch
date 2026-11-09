@@ -27,16 +27,16 @@ Value Report(const wchar_t* status) {
     r.Set(L"paths", Value::Array());
     return r;
 }
-Value Scan(const std::wstring& id, DWORD pid, FILETIME before) {
-    Handle proc(OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_DUP_HANDLE | PROCESS_VM_READ, FALSE, pid));
-    if (!proc) return Report(GetLastError()==ERROR_ACCESS_DENIED ? L"access_denied" : L"unavailable");
-    FILETIME created{}, ended{}, kernel{}, user{};
-    if (!GetProcessTimes(proc.Get(), &created, &ended, &kernel, &user) || CompareFileTime(&created,&before)>0)
-        return Report(L"process_changed");
+// The mounted volumes of one device as {GUID path with the trailing separator
+// kept, mount path shown to the user}. Both directions of the worker protocol
+// resolve the roots the same way, so the parent can re-check a child's paths
+// against exactly the set the child filtered them with. Empty when the device
+// cannot be enumerated right now.
+std::vector<std::pair<std::wstring,std::wstring>> VolumeRoots(const std::wstring& id) {
     DeviceManager manager;
-    if (!manager.Refresh()) return Report(L"device_unavailable");
-    auto device = manager.FindByInstanceId(id);
-    if (!device || device->volumeInterfaces.empty()) return Report(L"device_unavailable");
+    if (!manager.Refresh()) return {};
+    const auto device = manager.FindByInstanceId(id);
+    if (!device || device->volumeInterfaces.empty()) return {};
     std::vector<std::pair<std::wstring,std::wstring>> roots;
     for (auto vol : device->volumeInterfaces) {
         vol += L'\\';
@@ -46,8 +46,23 @@ Value Scan(const std::wstring& id, DWORD pid, FILETIME before) {
         std::wstring display = vol;
         if (!mount.empty() && GetVolumePathNamesForVolumeNameW(vol.c_str(),mount.data(),needed,&needed) && mount[0])
             display = mount.data();
-        roots.emplace_back(vol, display);
+        roots.emplace_back(std::move(vol), std::move(display));
     }
+    return roots;
+}
+
+bool UnderRoot(const std::wstring& path, const std::wstring& root) {
+    return !root.empty() && path.size() >= root.size() && !_wcsnicmp(path.c_str(), root.c_str(), root.size());
+}
+
+Value Scan(const std::wstring& id, DWORD pid, FILETIME before) {
+    Handle proc(OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_DUP_HANDLE | PROCESS_VM_READ, FALSE, pid));
+    if (!proc) return Report(GetLastError()==ERROR_ACCESS_DENIED ? L"access_denied" : L"unavailable");
+    FILETIME created{}, ended{}, kernel{}, user{};
+    if (!GetProcessTimes(proc.Get(), &created, &ended, &kernel, &user) || CompareFileTime(&created,&before)>0)
+        return Report(L"process_changed");
+    const auto roots = VolumeRoots(id);
+    if (roots.empty()) return Report(L"device_unavailable");
     Snapshot s;
     DWORD err = PssCaptureSnapshot(proc.Get(), static_cast<PSS_CAPTURE_FLAGS>(PSS_CAPTURE_HANDLES | PSS_CAPTURE_HANDLE_NAME_INFORMATION), 0, &s.snap);
     if (err) return Report(err==ERROR_ACCESS_DENIED ? L"access_denied" : L"unavailable");
@@ -89,7 +104,8 @@ Value Scan(const std::wstring& id, DWORD pid, FILETIME before) {
     for (auto& path:paths) r.At(L"paths").Push(Value::String(path));
     return r;
 }
-Value TimedScan(const std::wstring& id,DWORD pid,FILETIME before, ULONGLONG deadline) {
+Value TimedScan(const std::wstring& id,DWORD pid,FILETIME before, ULONGLONG deadline,
+                const std::vector<std::pair<std::wstring,std::wstring>>& roots) {
     if (GetTickCount64()>=deadline) return Report(L"timeout");
     GUID guid{};
     WCHAR suffix[40]{};
@@ -120,7 +136,9 @@ Value TimedScan(const std::wstring& id,DWORD pid,FILETIME before, ULONGLONG dead
         !Value::Parse(std::wstring_view(out.ptr,len),r) || !r.IsObject()) return Report(L"unavailable");
     // The mapping name travels on the child's command line, so any same-session
     // process could write to it during the wait. Accept only exactly the schema
-    // Scan() produces, with the caps Scan() itself enforces.
+    // Scan() produces, with the caps Scan() itself enforces, and then re-check
+    // every path against the device's volumes: the schema alone says nothing
+    // about which device the paths belong to.
     static constexpr const wchar_t* kStatuses[] = {L"inspected", L"partial", L"access_denied",
         L"timeout", L"process_changed", L"device_unavailable", L"unavailable"};
     const Value* status = r.Find(L"status");
@@ -135,6 +153,12 @@ Value TimedScan(const std::wstring& id,DWORD pid,FILETIME before, ULONGLONG dead
             return Report(L"unavailable");
         for (wchar_t c : path.AsString())
             if (c < 0x20) return Report(L"unavailable");
+        // Same filter Scan() applies before it records a path: it must sit under
+        // a mount point of one of this device's volumes. Anything else is either
+        // a path from another device or text nobody in this chain produced.
+        if (std::none_of(roots.begin(), roots.end(), [&path](const auto& root) {
+                return UnderRoot(path.AsString(), root.second);
+            })) return Report(L"unavailable");
     }
     return r;
 }
@@ -155,8 +179,15 @@ int FileWorker(const wchar_t* map,const wchar_t* device,const wchar_t* processId
 Value InspectOpenFiles(const std::wstring& id,const EjectResult& veto) {
     auto list=Value::Array();
     const auto deadline=GetTickCount64()+3500;
+    // Resolved once and shared: every scan below has to be checked against the
+    // same volume roots Scan() filtered its paths with, and enumerating the
+    // device once per reported process would spend the whole shared budget on
+    // refreshes. Without roots there is nothing to check the child against, and
+    // the child would reach the same conclusion on its own.
+    const auto roots=VolumeRoots(id);
     for (const auto& p:veto.reportedProcesses) {
-        auto r=TimedScan(id,p.pid,veto.requestedAt,deadline);
+        auto r=roots.empty() ? Report(L"device_unavailable")
+                             : TimedScan(id,p.pid,veto.requestedAt,deadline,roots);
         r.Set(L"pid",Value::Number(p.pid)); r.Set(L"name",Value::String(p.name));
         list.Push(std::move(r));
     }
