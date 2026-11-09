@@ -243,12 +243,14 @@ inline void ConvertDialogButtons(HWND hwnd, bool dark, bool hc) {
         if (GetClassNameW(child, cls, 32) && !_wcsicmp(cls, L"Button")) {
             const LONG_PTR style = GetWindowLongPtrW(child, GWL_STYLE);
             const LONG_PTR type = style & BS_TYPEMASK;
+            // LONG_PTR, not int: the value is stored through SetPropW as a
+            // HANDLE-sized token, and casting an int straight to HANDLE warns.
+            const LONG_PTR primary = type == BS_DEFPUSHBUTTON ? 1 : 0;
             const bool push = type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON;
             if (!hc) {  // owner-draw rendering
                 if (push) {
                     SetPropW(child, L"USB.Type", reinterpret_cast<HANDLE>(type + 1));
-                    SetPropW(child, L"USB.Primary",
-                             reinterpret_cast<HANDLE>(type == BS_DEFPUSHBUTTON ? 1 : 0));
+                    SetPropW(child, L"USB.Primary", reinterpret_cast<HANDLE>(primary));
                     SetWindowLongPtrW(child, GWL_STYLE, (style & ~BS_TYPEMASK) | BS_OWNERDRAW);
                     SetWindowSubclass(child, ButtonSubclass, 1, 0);
                 } else {

@@ -73,9 +73,9 @@ AppSettings AppSettings::FromJson(const json::Value& root) {
     // Members this build does not understand are stored unchanged so the next
     // Save() writes them back instead of silently dropping data a newer
     // version had put into the file.
-    for (const auto& key : root.Keys()) {
-        if (!IsKnownKey(key)) {
-            if (const json::Value* value = root.Find(key)) settings.extra[key] = *value;
+    for (const auto& extraKey : root.Keys()) {
+        if (!IsKnownKey(extraKey)) {
+            if (const json::Value* value = root.Find(extraKey)) settings.extra[extraKey] = *value;
         }
     }
     return settings;

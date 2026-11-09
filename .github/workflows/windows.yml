@@ -85,20 +85,22 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # Compiles the MSVC-only paths the MinGW job never touches: CMakeLists.txt
-      # /W4 /WX (QE_WARNINGS_AS_ERRORS), the static MSVC runtime, the linker
-      # /MANIFESTINPUT merge and the QE_MSVC_MANIFEST branch in version.rc.in.
-      - name: Build with MSVC (Visual Studio generator, warnings as errors)
+      # Compiles the MSVC-only paths the MinGW job never touches: /W4 /WX
+      # (QE_WARNINGS_AS_ERRORS) and the static MSVC runtime. Ninja rather than
+      # the "Visual Studio 17 2022" generator on purpose: that generator fails to
+      # link with the /MANIFESTINPUT option CMakeLists.txt sets (CVT1100,
+      # duplicate MANIFEST id 1), and build.ps1 already proves the Ninja path.
+      - name: Build with MSVC (Ninja generator, warnings as errors)
         shell: pwsh
         run: |
-          cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64 -DQE_WARNINGS_AS_ERRORS=ON
+          cmake -S . -B build/msvc -G Ninja -DCMAKE_BUILD_TYPE=Release -DQE_WARNINGS_AS_ERRORS=ON
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
-          cmake --build build/msvc --config Release
+          cmake --build build/msvc
           if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
       - name: Check source strings and executable resources
         shell: pwsh
         run: |
           python tools/check-strings.py
           if ($LASTEXITCODE -ne 0) { throw 'Source consistency check failed' }
-          python tools/check-resources.py build/msvc/Release/usb-switch.exe
+          python tools/check-resources.py build/msvc/usb-switch.exe
           if ($LASTEXITCODE -ne 0) { throw 'Resource check failed' }

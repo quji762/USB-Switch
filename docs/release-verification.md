@@ -27,7 +27,7 @@ GUI 冒烟测试需要交互桌面：
 两条流水线的内容：
 
 - **MinGW** —— 构建、字符串检查、可执行文件资源检查、单元测试、设备枚举，外加托盘 GUI 冒烟和安装包测试。
-- **MSVC** —— Visual Studio 17 2022 生成器，`-DQE_WARNINGS_AS_ERRORS=ON`，覆盖 `/W4 /WX`、静态运行时和清单合并这些 MinGW 走不到的路径。
+- **MSVC** —— Ninja 生成器加 `-DQE_WARNINGS_AS_ERRORS=ON`，覆盖 `/W4 /WX`、静态 MSVC 运行时，以及只有 MSVC 才报的警告（有符号/无符号不匹配、整型到 `HANDLE` 的转换、局部变量遮蔽）。用 Ninja 而不是 `Visual Studio 17 2022` 生成器：后者配上 `CMakeLists.txt` 里的 `/MANIFESTINPUT` 会链接失败（`CVT1100`，清单资源 id 1 重复），而 `.\build.ps1` 走的就是 Ninja 这条已验证的路。
 
 手动运行：GitHub 仓库的 Actions 页面 → *Windows build and tests* → *Run workflow*。
 

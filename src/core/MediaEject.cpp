@@ -55,11 +55,15 @@ DWORD Layout(const MediaIo& io, HANDLE disk, Ranges& ranges, Ranges& optional) {
         constexpr size_t prefix = offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry);
         if (bytes < prefix || bytes > size || layout->PartitionCount > (bytes-prefix)/sizeof(PARTITION_INFORMATION_EX))
             return ERROR_INVALID_DATA;
-        if (layout->PartitionStyle != PARTITION_STYLE_MBR && layout->PartitionStyle != PARTITION_STYLE_GPT)
+        // DRIVE_LAYOUT_INFORMATION_EX::PartitionStyle is a raw DWORD in the SDK,
+        // while every entry carries the PARTITION_STYLE enum. Hoisting the cast
+        // keeps the comparison below between two values of the same type.
+        const PARTITION_STYLE style = static_cast<PARTITION_STYLE>(layout->PartitionStyle);
+        if (style != PARTITION_STYLE_MBR && style != PARTITION_STYLE_GPT)
             return ERROR_NOT_SUPPORTED;
         for (DWORD i = 0; i < layout->PartitionCount; ++i) {
             const auto& part = layout->PartitionEntry[i];
-            if (part.PartitionStyle != layout->PartitionStyle) return ERROR_INVALID_DATA;
+            if (part.PartitionStyle != style) return ERROR_INVALID_DATA;
             if (part.PartitionStyle == PARTITION_STYLE_MBR) {
                 if (part.Mbr.PartitionType == PARTITION_ENTRY_UNUSED ||
                     ExtendedContainer(part.Mbr.PartitionType)) continue;
