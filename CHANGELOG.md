@@ -46,9 +46,9 @@ The first release under the reset version number. Its feature set covers all of 
 
 ## 早期开发记录 / Before the 1.0.0 reset
 
-版本号在 1.0.0 发布时重设。以下各条为当时的开发记录摘要。
+版本号在 1.0.0 发布时重设。以下各条为当时开发记录的摘要；完整原文见 git 历史。
 
-The version number was reset at the 1.0.0 release. The entries below summarise the records as they were written.
+The version number was reset at the 1.0.0 release. The entries below summarise the records as they were written; the full text is in the git history.
 
 - **1.5.1** 托盘菜单与窗口布局：日常弹出与退卡收入托盘主菜单，「管理设备」收入别名、隐藏与恢复；设置窗口按用途分组。
 - **1.5.0** 隐藏设备与空卡槽识别：按设备实例 ID 隐藏或恢复设备；向驱动查询介质是否就绪，明确无介质的槽位置灰。

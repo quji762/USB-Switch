@@ -4,6 +4,12 @@ Windows 托盘里的 USB 安全弹出工具。选中要拔出的 U 盘、移动�
 
 A Windows tray tool for safely removing USB storage. Pick the drive, eject it in one click — and when Windows refuses, see the reason it gave.
 
+## 系统要求 / Requirements
+
+Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可执行文件直接导入 `GetDpiForWindow`，更早的系统连加载都做不到，因此不为它们保留兼容条目。
+
+**English:** Windows 10 version 1607 (build 10.0.14393) or newer, including Windows 11. The executable imports `GetDpiForWindow` directly, so earlier systems cannot load the binary at all.
+
 ## 功能 / Features
 
 - **一键安全弹出** —— 走完整的 PnP 停止流程，不假装成功
@@ -28,7 +34,7 @@ A Windows tray tool for safely removing USB storage. Pick the drive, eject it in
 
 **English:** run the setup executable for a per-user install (no UAC prompt), or extract the portable ZIP and run `usb-switch.exe`.
 
-## 使用 / Usage
+## 快速上手 / Quick start
 
 启动后没有主窗口，图标在任务栏时钟旁；看不到时展开隐藏的托盘图标。
 
@@ -56,7 +62,7 @@ A Windows tray tool for safely removing USB storage. Pick the drive, eject it in
 
 托盘菜单「设置…」里可以改：界面语言、外观模式（跟随系统/浅色/深色）、全局快捷键、开机自启、插拔通知、弹出前确认、SMART 显示项，以及设备别名与隐藏设备。
 
-设置保存在 `%APPDATA%\USB-Switch\settings.json`，字段说明见 [docs/command-line.md](docs/command-line.md#settingsjson)。
+设置保存在 `%APPDATA%\USB-Switch\settings.json`，每个键的取值见 [docs/command-line.md](docs/command-line.md#settingsjson)。
 
 **English:** the settings dialog covers language, appearance, the global hotkey, run at startup, notifications, the eject confirmation, which SMART readings to show, and device aliases and hidden devices.
 
@@ -75,7 +81,27 @@ A Windows tray tool for safely removing USB storage. Pick the drive, eject it in
 
 **English:** one action per invocation; a bad command line prints the usage and exits 2 without touching any device. Add `--json` for machine-readable output. See [docs/command-line.md](docs/command-line.md) for the full reference.
 
-## 从源码构建 / Building
+## 获取帮助 / Getting help
+
+先打开托盘菜单的「打开日志文件夹」看日志（位置与内容说明见 [docs/command-line.md](docs/command-line.md#日志--logs)）。仍无法解决时，请到 [GitHub 仓库的问题页面](https://github.com/quji762/USB-Switch/issues) 反馈并附上日志——日志可能包含设备名称和实例 ID，分享前请自行检查。
+
+**English:** open **Open log folder** from the tray menu first (location and contents are described in [docs/command-line.md](docs/command-line.md#日志--logs)). If that does not resolve it, file an issue on the [GitHub repository](https://github.com/quji762/USB-Switch/issues) with the log attached — it can contain device names and instance IDs, so review it before sharing.
+
+## 已知限制 / Known limitations
+
+- 只管理可移动/USB 磁盘类设备（U 盘、移动硬盘、读卡器）；USB 光驱、手机（MTP）、打印机等不在范围内。
+- 打开设备失败的接口会被跳过，不出现在列表里。
+- 卷没有任何挂载点（没有盘符、也没有文件夹挂载）时，程序记录不到它：安全弹出不受影响，但「退出存储卡」不会为它出现。给这个卷分配一个盘符即可，机理见 [docs/command-line.md](docs/command-line.md#--eject-media--card-eject)。
+- 强制弹出（忽略 veto）故意没有实现——它会绕过硬件的安全停止流程，有数据损坏风险。
+- 占用文件检查只覆盖 Windows 为本次拒绝报告的进程，以及当前权限能识别的目标卷句柄，不保证列出所有占用者。
+- SMART 只覆盖能通过 ATA PASS-THROUGH 回答的设备；NVMe 通常只有温度。
+- 重新连接只记住本次运行中最后一次成功弹出的设备。
+
+**English:** removable/USB disk-class devices only; interfaces that fail to open are skipped; a volume with no mount point at all is invisible to the tool (safe removal still works, card eject does not — give the volume a drive letter); force-eject is deliberately absent; open-file inspection is best-effort; SMART needs a device that answers ATA pass-through; only the last eject of the run can be reconnected.
+
+## 开发者 / For developers
+
+### 从源码构建 / Building
 
 需要 CMake ≥ 3.16 和一个 C++17 编译器（MSVC 或 MinGW-w64 均可）。
 
@@ -83,17 +109,11 @@ A Windows tray tool for safely removing USB storage. Pick the drive, eject it in
 .\build.ps1                          # 自动探测工具链，产物在 dist\
 ```
 
-测试与发布验证见 [docs/release-verification.md](docs/release-verification.md)。
+测试、CI 与发布验证见 [docs/release-verification.md](docs/release-verification.md)。
 
 **English:** CMake 3.16+ and any C++17 compiler. `.\build.ps1` detects the toolchain and collects the artifacts in `dist\`.
 
-## 获取帮助 / Getting help
-
-先打开托盘菜单的「打开日志文件夹」看日志（位置与内容说明见 [docs/command-line.md](docs/command-line.md#日志--logs)）。仍无法解决时，请到 [GitHub 仓库的问题页面](https://github.com/quji762/USB-Switch/issues) 反馈并附上日志——日志可能包含设备名称和实例 ID，分享前请自行检查。
-
-**English:** open **Open log folder** from the tray menu first (location and contents are described in [docs/command-line.md](docs/command-line.md#日志--logs)). If that does not resolve it, file an issue on the [GitHub repository](https://github.com/quji762/USB-Switch/issues) with the log attached — it can contain device names and instance IDs, so review it before sharing.
-
-## 开发者 / For developers
+### 代码结构 / Layout
 
 ```text
 src/
@@ -107,19 +127,7 @@ src/
 
 界面语言目前只有简体中文和英语：文案集中在 `src/i18n/Strings.cpp` 的两列表，`tools/check-strings.py` 逐条校验非空与占位符一致。新增一种语言需要同时改这张表、语言识别和校验脚本。
 
-**English:** the tree above is the layout; `core/` holds everything UI-independent. Adding a language means the string table, the language detection and the checker all change together — it is not just another column.
-
-## 已知限制 / Known limitations
-
-- 只管理可移动/USB 磁盘类设备（U 盘、移动硬盘、读卡器）；USB 光驱、手机（MTP）、打印机等不在范围内。
-- 打开设备失败的接口会被跳过，不出现在列表里。
-- 卷没有任何挂载点（没有盘符、也没有文件夹挂载）时，程序记录不到它：安全弹出不受影响，但「退出存储卡」不会为它出现。给这个卷分配一个盘符即可。
-- 强制弹出（忽略 veto）故意没有实现——它会绕过硬件的安全停止流程，有数据损坏风险。
-- 占用文件检查只覆盖 Windows 为本次拒绝报告的进程，以及当前权限能识别的目标卷句柄，不保证列出所有占用者。
-- SMART 只覆盖能通过 ATA PASS-THROUGH 回答的设备；NVMe 通常只有温度。
-- 重新连接只记住本次运行中最后一次成功弹出的设备。
-
-**English:** removable/USB disk-class devices only; interfaces that fail to open are skipped; a volume with no mount point at all is invisible to the tool (safe removal still works, card eject does not); force-eject is deliberately absent; open-file inspection is best-effort; SMART needs a device that answers ATA pass-through.
+**English:** `core/` holds everything UI-independent. Adding a language means the string table, the language detection and the checker all change together — it is not just another column.
 
 ## 许可证 / License
 
