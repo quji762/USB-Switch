@@ -81,6 +81,17 @@ try {
     $cliLog = Get-Content -Raw -LiteralPath (Join-Path $logDir 'usb-switch-cli.log')
     if ($cliLog -notmatch 'starting \(CLI\)' -or $cliLog.Contains($target)) { throw 'CLI logging failed while tray was running or retained raw arguments' }
     if (!(Test-Path -LiteralPath (Join-Path $logDir 'usb-switch.log'))) { throw 'Tray log missing' }
+    # The second instance cannot append to the tray's usb-switch.log - the tray
+    # holds it with FILE_SHARE_READ only - so it must fall back to a per-process
+    # file and leave its single-instance notice there. The name carries that
+    # process's own PID, which is why it is matched instead of spelled out.
+    $secondLog = Join-Path $logDir "usb-switch.$($second.Id).log"
+    if (!(Test-Path -LiteralPath $secondLog)) { throw 'Second instance did not write a per-process log' }
+    $secondLogText = Get-Content -Raw -LiteralPath $secondLog
+    if ($secondLogText -notmatch 'starting \(tray\)') { throw 'Second instance log is missing its startup line' }
+    if ($secondLogText -notmatch 'another instance is already running') { throw 'Second instance log is missing the single-instance notice' }
+    $otherLogs = Get-ChildItem -LiteralPath $logDir -Filter 'usb-switch.*.log' -File | Where-Object { $_.FullName -ne $secondLog }
+    if ($otherLogs) { throw ("Unexpected per-process log(s): " + ($otherLogs.Name -join ', ')) }
     if (![UsbSwitchGuiTest]::PostMessageW($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)) { throw 'Could not request window close' }
     if (!$process.WaitForExit(10000) -or $process.ExitCode -ne 0) { throw 'Application did not exit cleanly' }
     Write-Host 'GUI startup, single-instance handling and graceful shutdown passed'
