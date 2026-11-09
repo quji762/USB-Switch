@@ -8,14 +8,21 @@
 
 namespace qe::str {
 
-// Converts UTF-8 bytes to UTF-16. Invalid sequences become U+FFFD.
+// Converts UTF-8 bytes to UTF-16. Invalid sequences become U+FFFD (one per
+// offending byte), so diagnostics never disappear and the result is never empty
+// for non-empty input.
 std::wstring FromUtf8(std::string_view utf8);
 
-// Converts UTF-16 text to UTF-8 bytes (no BOM is added).
+// Converts UTF-16 text to UTF-8 bytes (no BOM is added). The conversion never
+// fails: an unpaired surrogate becomes U+FFFD rather than an error.
 std::string ToUtf8(std::wstring_view wide);
 
-// printf-style formatting into a std::wstring. Result is capped at 8 KiB;
-// oversized output is truncated rather than fatal.
+// printf-style formatting into a std::wstring. Output longer than 8 KiB is cut
+// at 8191 characters - the terminator needs the last slot - and is truncated
+// rather than fatal. Measured on the UCRT this project links: vswprintf()
+// returns -1 for an over-long output but has already written the truncated
+// prefix, so the caller sees the text that was produced. A conversion that
+// fails outright (nothing written) yields an empty string instead.
 std::wstring Format(const wchar_t* fmt, ...);
 
 // va_list variant, used by the logging macros.

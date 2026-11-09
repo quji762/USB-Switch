@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cwchar>
 
+#include "util/Win32.h"
+
 namespace qe::str {
 
 bool IsDriveLetterMount(std::wstring_view path) {
@@ -55,9 +57,14 @@ std::wstring FormatV(const wchar_t* fmt, va_list args) {
     std::wstring out(kFormatLimit, L'\0');
     int written = std::vswprintf(out.data(), out.size(), fmt, args);
     if (written < 0) {
-        // vswprintf failed. Truncate at the first NUL, but guard against
-        // find() returning npos (nothing was written at all): resize(npos)
-        // would throw std::length_error.
+        // vswprintf() returns a negative count both when the output was too
+        // long and when the conversion itself failed. On the UCRT the too-long
+        // case has already written everything that fits plus a terminator, so
+        // the buffer holds the truncated prefix; a genuine failure leaves it
+        // untouched (all NULs) and the result is empty. Either way the buffer
+        // is the whole answer and can never exceed kFormatLimit - 1, which is
+        // what Str.h promises. The npos guard matters: resize(npos) would
+        // throw std::length_error.
         const size_t terminator = out.find(L'\0');
         out.resize(terminator == std::wstring::npos ? 0 : terminator);
         return out;
@@ -139,16 +146,18 @@ std::wstring FileSizeString(unsigned long long bytes) {
 
 std::wstring Win32ErrorMessage(unsigned long error) {
     if (error == 0) return {};
-    LPWSTR buffer = nullptr;
+    // LocalBlock frees the FormatMessageW buffer even if constructing the
+    // std::wstring below throws.
+    LocalBlock buffer;
     DWORD len = FormatMessageW(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         nullptr, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        reinterpret_cast<LPWSTR>(&buffer), 0, nullptr);
-    if (len == 0 || buffer == nullptr) {
+        reinterpret_cast<LPWSTR>(buffer.Receive()), 0, nullptr);
+    if (len == 0 || !buffer) {
         return str::Format(L"Win32 error %lu", error);
     }
-    std::wstring message(buffer, len);
-    LocalFree(buffer);
+    const std::wstring message(buffer.Get(), len);
+    buffer.Reset();
     return str::Trim(message);
 }
 

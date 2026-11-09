@@ -72,6 +72,45 @@ private:
     HANDLE handle_ = nullptr;
 };
 
+// Owns a block allocated by the Win32 API itself (FormatMessageW with
+// FORMAT_MESSAGE_ALLOCATE_BUFFER hands out a LocalAlloc'ed buffer that the
+// caller must LocalFree). Wrapping it keeps the release off the happy path,
+// where a throwing std::wstring construction between the call and the free
+// would otherwise leak the block.
+class LocalBlock {
+public:
+    LocalBlock() noexcept = default;
+    ~LocalBlock() { Reset(); }
+
+    LocalBlock(const LocalBlock&) = delete;
+    LocalBlock& operator=(const LocalBlock&) = delete;
+
+    LocalBlock(LocalBlock&& other) noexcept : block_(other.block_) { other.block_ = nullptr; }
+    LocalBlock& operator=(LocalBlock&& other) noexcept {
+        if (this != &other) {
+            Reset();
+            block_ = other.block_;
+            other.block_ = nullptr;
+        }
+        return *this;
+    }
+
+    LPWSTR Get() const noexcept { return block_; }
+    explicit operator bool() const noexcept { return block_ != nullptr; }
+
+    void Reset(LPWSTR block = nullptr) noexcept {
+        if (block_ != nullptr) LocalFree(block_);
+        block_ = block;
+    }
+
+    // Out-parameter for the ALLOCATE_BUFFER protocol: the API writes the
+    // pointer here and leaves it alone on failure.
+    LPWSTR* Receive() noexcept { return &block_; }
+
+private:
+    LPWSTR block_ = nullptr;
+};
+
 // Destroys a SetupAPI device information set (HDEVINFO).
 class DevInfoSet {
 public:

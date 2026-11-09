@@ -19,6 +19,38 @@ const std::wstring kEmptyString;
 // nesting depth is bounded. Real settings never come close to this.
 constexpr int kMaxDepth = 64;
 
+// How much of the input an error message shows at the failure point.
+constexpr size_t kTokenPreview = 16;
+
+// Temporary names tried before SaveFile gives up. The sequence number only has
+// to outrun the files a predecessor of this same process left behind, so a
+// handful is plenty.
+constexpr unsigned kMaxSaveAttempts = 64;
+
+// Deletes the ".tmp" files this same process (same PID and thread id) left in
+// the directory of `path`. A live process can never share a PID with us and no
+// other thread of ours can share our thread id, so anything matching was
+// written by a predecessor that died before it could rename or delete it.
+// Temporaries belonging to other processes are deliberately left alone: their
+// owners may still be writing, and a name we cannot prove stale is not ours to
+// delete. `keep` names the file we are still holding, if any.
+void RemoveStaleTemporaries(const std::wstring& path, const std::wstring& keep) {
+    const std::wstring pattern =
+        path + str::Format(L".%lu.%lu.*.tmp", GetCurrentProcessId(), GetCurrentThreadId());
+    WIN32_FIND_DATAW found{};
+    HANDLE search = FindFirstFileW(pattern.c_str(), &found);
+    if (search == INVALID_HANDLE_VALUE) return;
+    const size_t lastSlash = path.find_last_of(L"\\/");
+    const std::wstring directory =
+        (lastSlash == std::wstring::npos) ? std::wstring() : path.substr(0, lastSlash + 1);
+    do {
+        if ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+        const std::wstring name = directory + found.cFileName;
+        if (name != keep) DeleteFileW(name.c_str());
+    } while (FindNextFileW(search, &found) != FALSE);
+    FindClose(search);
+}
+
 void AppendEscaped(std::wstring& out, std::wstring_view text) {
     out.push_back(L'"');
     for (wchar_t c : text) {
@@ -59,13 +91,18 @@ void AppendNumber(std::wstring& out, double number) {
 
 class Parser {
 public:
-    explicit Parser(std::wstring_view text) : text_(text) {}
+    Parser(std::wstring_view text, std::wstring* error) : text_(text), error_(error) {}
 
-    bool Run(Value& out, std::wstring* error) {
+    bool Run(Value& out) {
         SkipWhitespace();
-        if (!ParseValue(out)) return Fail(error, L"unexpected token");
+        // Every failure below reports what it expected and what it found; the
+        // guard only catches a future path that forgets to.
+        if (!ParseValue(out)) {
+            if (!reported_) Fail(L"a JSON value", DescribePosition());
+            return false;
+        }
         SkipWhitespace();
-        if (pos_ != text_.size()) return Fail(error, L"trailing characters after JSON value");
+        if (pos_ != text_.size()) return Fail(L"end of input", DescribePosition());
         return true;
     }
 
@@ -81,18 +118,56 @@ private:
         }
     }
 
-    bool Fail(std::wstring* error, const wchar_t* message) const {
-        if (error != nullptr) {
-            *error = str::Format(L"JSON error at offset %zu: %ls", pos_, message);
+    // A short window of the input at the failure point, so a hand-edited or
+    // truncated settings file can be found by eye. Control characters are shown
+    // as \uXXXX rather than being dropped into a message.
+    std::wstring DescribePosition() const {
+        if (pos_ >= text_.size()) return L"end of input";
+        size_t end = pos_;
+        while (end < text_.size() && end - pos_ < kTokenPreview && text_[end] != L' ' &&
+               text_[end] != L'\t' && text_[end] != L'\n' && text_[end] != L'\r') {
+            ++end;
+        }
+        std::wstring preview;
+        for (size_t i = pos_; i < end; ++i) {
+            const wchar_t c = text_[i];
+            if (c >= 0x20 && c != 0x7F) {
+                preview.push_back(c);
+            } else {
+                preview += str::Format(L"\\u%04X", static_cast<unsigned>(c));
+            }
+        }
+        if (preview.empty()) preview = str::Format(L"\\u%04X", static_cast<unsigned>(text_[pos_]));
+        return L"'" + preview + L"'";
+    }
+
+    bool Fail(std::wstring_view message) {
+        reported_ = true;
+        if (error_ != nullptr) {
+            *error_ = str::Format(L"JSON error at offset %zu: %ls", pos_,
+                                  std::wstring(message).c_str());
+        }
+        return false;
+    }
+
+    bool Fail(std::wstring_view expected, std::wstring_view found) {
+        reported_ = true;
+        if (error_ != nullptr) {
+            *error_ = str::Format(L"JSON error at offset %zu: expected %ls, found %ls", pos_,
+                                  std::wstring(expected).c_str(), std::wstring(found).c_str());
         }
         return false;
     }
 
     bool ParseValue(Value& out) {
-        if (pos_ >= text_.size()) return false;
+        if (pos_ >= text_.size()) return Fail(L"a JSON value", L"end of input");
         const wchar_t c = text_[pos_];
         if (c == L'{' || c == L'[') {
-            if (depth_ >= kMaxDepth) return false;  // stack-overflow guard
+            if (depth_ >= kMaxDepth) {
+                // stack-overflow guard
+                return Fail(str::Format(L"a value nested at most %d levels deep", kMaxDepth),
+                            DescribePosition());
+            }
             ++depth_;
             const bool ok = (c == L'{') ? ParseObject(out) : ParseArray(out);
             --depth_;
@@ -106,7 +181,8 @@ private:
         }
         if (c == L't' || c == L'f') return ParseBoolean(out);
         if (c == L'n') return ParseNull(out);
-        return ParseNumber(out);
+        if (c == L'-' || (c >= L'0' && c <= L'9')) return ParseNumber(out);
+        return Fail(L"a JSON value", DescribePosition());
     }
 
     bool ParseObject(Value& out) {
@@ -120,9 +196,9 @@ private:
         for (;;) {
             SkipWhitespace();
             std::wstring key;
-            if (!ParseString(key)) return false;
+            if (!ParseString(key)) return false;  // ParseString reported the reason
             SkipWhitespace();
-            if (Peek() != L':') return false;
+            if (Peek() != L':') return Fail(L"':' after the object key", DescribePosition());
             ++pos_;  // ':'
             SkipWhitespace();
             Value value;
@@ -138,7 +214,7 @@ private:
                 ++pos_;
                 return true;
             }
-            return false;
+            return Fail(L"',' or '}'", DescribePosition());
         }
     }
 
@@ -165,7 +241,7 @@ private:
                 ++pos_;
                 return true;
             }
-            return false;
+            return Fail(L"',' or ']'", DescribePosition());
         }
     }
 
@@ -180,7 +256,7 @@ private:
             out = Value::Bool(false);
             return true;
         }
-        return false;
+        return Fail(L"'true' or 'false'", DescribePosition());
     }
 
     bool ParseNull(Value& out) {
@@ -189,7 +265,7 @@ private:
             out = Value::Null();
             return true;
         }
-        return false;
+        return Fail(L"'null'", DescribePosition());
     }
 
     // Manual scan over the JSON number grammar: '-'? int frac? exp?
@@ -199,14 +275,18 @@ private:
     bool ParseNumber(Value& out) {
         const size_t start = pos_;
         if (Peek() == L'-') ++pos_;
-        if (pos_ >= text_.size()) return false;
+        if (pos_ >= text_.size()) return Fail(L"a digit after '-'", L"end of input");
 
         // RFC 8259 integer part: int = "0" / digit1-9 *DIGIT, so a leading zero
         // may only stand alone ("0", "0.5" and "0e1" are fine; "01" is not).
-        if (text_[pos_] < L'0' || text_[pos_] > L'9') return false;  // no integer part
+        if (text_[pos_] < L'0' || text_[pos_] > L'9') {
+            return Fail(L"a digit", DescribePosition());  // no integer part
+        }
         if (text_[pos_] == L'0') {
             ++pos_;
-            if (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') return false;
+            if (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
+                return Fail(L"no digit after a leading zero", DescribePosition());
+            }
         } else {
             while (pos_ < text_.size() && text_[pos_] >= L'0' && text_[pos_] <= L'9') {
                 ++pos_;
@@ -220,7 +300,9 @@ private:
                 ++pos_;
                 ++fracDigits;
             }
-            if (fracDigits == 0) return false;  // '.' must be followed by digits
+            if (fracDigits == 0) {
+                return Fail(L"a digit after the decimal point", DescribePosition());
+            }
         }
 
         if (pos_ < text_.size() && (text_[pos_] == L'e' || text_[pos_] == L'E')) {
@@ -231,32 +313,38 @@ private:
                 ++pos_;
                 ++expDigits;
             }
-            if (expDigits == 0) return false;  // exponent must have digits
+            if (expDigits == 0) return Fail(L"a digit in the exponent", DescribePosition());
         }
 
         // str::Format cannot be used on a string_view, so copy the token.
         const std::wstring token(text_.substr(start, pos_ - start));
         wchar_t* end = nullptr;
         const double number = std::wcstod(token.c_str(), &end);
-        if (end != token.c_str() + token.size()) return false;
-        if (!std::isfinite(number)) return false;  // reject overflow to infinity
+        if (end != token.c_str() + token.size()) return Fail(L"a number this parser accepts");
+        if (!std::isfinite(number)) {
+            return Fail(L"a number inside the double range");  // reject overflow to infinity
+        }
         out = Value::Number(number);
         return true;
     }
 
     bool ParseString(std::wstring& out) {
-        if (Peek() != L'"') return false;
+        if (Peek() != L'"') return Fail(L"a string", DescribePosition());
         ++pos_;  // opening quote
         out.clear();
         while (pos_ < text_.size()) {
             wchar_t c = text_[pos_++];
             if (c == L'"') return true;
             if (c != L'\\') {
-                if (c < 0x20) return false;  // RFC 8259: control characters must be escaped
+                // RFC 8259: control characters must be escaped
+                if (c < 0x20) {
+                    return Fail(str::Format(L"an escaped control character, not U+%04X",
+                                            static_cast<unsigned>(c)));
+                }
                 out.push_back(c);
                 continue;
             }
-            if (pos_ >= text_.size()) return false;
+            if (pos_ >= text_.size()) return Fail(L"an escape character after '\\'");
             wchar_t escape = text_[pos_++];
             switch (escape) {
                 case L'"': out.push_back(L'"'); break;
@@ -279,30 +367,33 @@ private:
                             if (low >= 0xDC00 && low <= 0xDFFF) {
                                 code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
                             } else {
-                                return false;
+                                return Fail(L"a low surrogate (\\uDC00-\\uDFFF) after a high one",
+                                            DescribePosition());
                             }
                         } else {
-                            return false;
+                            return Fail(L"a low surrogate after a high one", DescribePosition());
                         }
                     }
                     // A code still in the low-surrogate range was not consumed
                     // as part of a pair above, so it would be a lone surrogate.
-                    if (code >= 0xDC00 && code <= 0xDFFF) return false;
+                    if (code >= 0xDC00 && code <= 0xDFFF) {
+                        return Fail(L"a high surrogate before a low one", DescribePosition());
+                    }
                     AppendUtf32(out, code);
                     break;
                 }
                 default:
-                    return false;
+                    return Fail(str::Format(L"a known escape, not '\\%lc'", escape));
             }
         }
-        return false;  // unterminated string
+        return Fail(L"a closing '\"'");  // unterminated string
     }
 
     bool ReadHex4(unsigned& code) {
-        if (pos_ + 4 > text_.size()) return false;
+        if (pos_ + 4 > text_.size()) return Fail(L"four hex digits after '\\u'", L"end of input");
         code = 0;
         for (int i = 0; i < 4; ++i) {
-            wchar_t c = text_[pos_++];
+            const wchar_t c = text_[pos_];
             unsigned digit = 0;
             if (c >= L'0' && c <= L'9') {
                 digit = static_cast<unsigned>(c - L'0');
@@ -311,8 +402,13 @@ private:
             } else if (c >= L'A' && c <= L'F') {
                 digit = static_cast<unsigned>(c - L'A' + 10);
             } else {
-                return false;
+                // pos_ is only advanced past a digit once it has been accepted,
+                // so a bad one leaves it on the character the message names:
+                // the offset and the quoted character are the same position,
+                // as they are for every other failure.
+                return Fail(L"a hex digit", str::Format(L"'%lc'", c));
             }
+            ++pos_;
             code = (code << 4) | digit;
         }
         return true;
@@ -332,8 +428,10 @@ private:
     wchar_t Peek() const { return pos_ < text_.size() ? text_[pos_] : L'\0'; }
 
     std::wstring_view text_;
+    std::wstring* error_ = nullptr;
     size_t pos_ = 0;
     int depth_ = 0;
+    bool reported_ = false;
 };
 
 }  // namespace
@@ -433,13 +531,18 @@ void Value::Push(Value value) {
     array_.push_back(std::move(value));
 }
 
+// Containers only - see Json.h. Mixing the string length in here used to let a
+// non-empty JSON string answer "is this array non-empty?" with yes.
 size_t Value::Size() const noexcept {
     switch (type_) {
         case Type::Array: return array_.size();
         case Type::Object: return object_.size();
-        case Type::String: return string_.size();
         default: return 0;
     }
+}
+
+size_t Value::Length() const noexcept {
+    return type_ == Type::String ? string_.size() : 0;
 }
 
 bool Value::AsBool(bool fallback) const {
@@ -512,8 +615,8 @@ std::wstring Value::Dump() const {
 }
 
 bool Value::Parse(std::wstring_view text, Value& out, std::wstring* error) {
-    Parser parser(text);
-    return parser.Run(out, error);
+    Parser parser(text, error);
+    return parser.Run(out);
 }
 
 // ---------------------------------------------------------------------------
@@ -562,14 +665,35 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error, 
     // the target with CREATE_ALWAYS would leave a truncated settings.json if
     // the disk fills up or the machine loses power mid-write, and the next
     // start would silently fall back to defaults.
-    const std::wstring temporary = path + str::Format(L".%lu.%lu.%llu.tmp", GetCurrentProcessId(),
-        GetCurrentThreadId(), static_cast<unsigned long long>(GetTickCount64()));
-    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    //
+    // The name has to be unique per attempt: PID + thread id + tick alone
+    // repeats when one thread saves twice inside a single tick (GetTickCount64
+    // has a ~16 ms resolution), and CREATE_NEW would then fail on a file nobody
+    // owns. The sequence number is appended until a free name turns up.
+    // CreateFileW reports the collision as ERROR_FILE_EXISTS (80);
+    // ERROR_ALREADY_EXISTS (183) is accepted too so the retry also survives a
+    // rename or directory-creation path that reports it that way.
+    std::wstring temporary;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    for (unsigned attempt = 0; attempt < kMaxSaveAttempts; ++attempt) {
+        temporary = str::Format(L"%ls.%lu.%lu.%llu.%u.tmp", path.c_str(), GetCurrentProcessId(),
+                                GetCurrentThreadId(),
+                                static_cast<unsigned long long>(GetTickCount64()), attempt);
+        file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) break;
+        const DWORD createError = GetLastError();
+        if (createError != ERROR_FILE_EXISTS && createError != ERROR_ALREADY_EXISTS) {
+            if (error != nullptr) {
+                *error = str::Format(L"cannot write %ls: %ls", temporary.c_str(),
+                                     str::Win32ErrorMessage(createError).c_str());
+            }
+            return false;
+        }
+    }
     if (file == INVALID_HANDLE_VALUE) {
         if (error != nullptr) {
-            *error = str::Format(L"cannot write %ls: %ls", temporary.c_str(),
-                                 str::Win32ErrorMessage(GetLastError()).c_str());
+            *error = str::Format(L"cannot write %ls: no free temporary name", path.c_str());
         }
         return false;
     }
@@ -582,6 +706,7 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error, 
     handle.Reset();  // close before the rename
     if (ok == FALSE) {
         DeleteFileW(temporary.c_str());
+        RemoveStaleTemporaries(path, temporary);
         if (error != nullptr) *error = str::Format(L"cannot write %ls", temporary.c_str());
         return false;
     }
@@ -589,12 +714,14 @@ bool SaveFile(const std::wstring& path, const Value& root, std::wstring* error, 
     if (!MoveFileExW(temporary.c_str(), path.c_str(), flags)) {
         const DWORD moveError = GetLastError();
         DeleteFileW(temporary.c_str());
+        RemoveStaleTemporaries(path, temporary);
         if (error != nullptr) {
             *error = str::Format(L"cannot replace %ls: %ls", path.c_str(),
                                  str::Win32ErrorMessage(moveError).c_str());
         }
         return false;
     }
+    RemoveStaleTemporaries(path, temporary);
     return true;
 }
 
