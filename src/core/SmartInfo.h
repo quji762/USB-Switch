@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <windows.h>
+
 namespace qe {
 
 struct SmartSnapshot {
@@ -22,6 +24,14 @@ struct SmartSnapshot {
     uint64_t pending = 0;
 };
 
+// The Win32 entry points ReadSmart calls. Injecting them lets a test drive the
+// ATA pass-through requests - the CDB bytes in particular - through a disk that
+// does not exist, which is otherwise unreachable without real hardware.
+struct SmartIo {
+    decltype(&::CreateFileW) open = ::CreateFileW;
+    decltype(&::DeviceIoControl) control = ::DeviceIoControl;
+};
+
 // Interprets a 512-byte ATA SMART READ DATA payload. Values already present in
 // out are kept when the attribute table does not contain that field.
 void ParseSmartAttributes(const uint8_t* data, size_t size, SmartSnapshot& out);
@@ -31,6 +41,6 @@ void ParseSmartAttributes(const uint8_t* data, size_t size, SmartSnapshot& out);
 // diskInterface is the SetupAPI path. Drive roots inside mountPaths are tried
 // as \\.\X: because several USB bridges only answer SMART there.
 SmartSnapshot ReadSmart(const std::wstring& diskInterface, const std::vector<std::wstring>& mountPaths,
-                        unsigned long deviceNumber);
+                        unsigned long deviceNumber, const SmartIo& io = {});
 
 }  // namespace qe
