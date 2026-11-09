@@ -1,4 +1,6 @@
 #include "core/UsbPort.h"
+#include "app/Logger.h"
+#include "util/Str.h"
 #include "util/Win32.h"
 #include <cfgmgr32.h>
 #include <cfg.h>
@@ -69,6 +71,19 @@ DWORD ReconnectUsbPort(const std::wstring& target, bool probeOnly) {
     req.ConnectionIndex=port;
     if (!DeviceIoControl(hub.Get(),IOCTL_USB_HUB_CYCLE_PORT,&req,sizeof(req),&req,sizeof(req),&got,nullptr))
         return GetLastError();
-    return req.StatusReturned ? ERROR_GEN_FAILURE : ERROR_SUCCESS;
+    // StatusReturned is a USBD status from the hub driver, not a Win32 error,
+    // so folding it into ERROR_GEN_FAILURE throws away the only clue about
+    // which hub refused the cycle.
+    if (req.StatusReturned) {
+        const std::wstring detail=str::Format(L"port cycle on %ls (connection %lu) reported hub status 0x%08lX",
+                                              target.c_str(),port,req.StatusReturned);
+        QE_LOG_WARN(L"%ls",detail.c_str());
+        // The elevated helper that usually performs this cycle does not open a
+        // log file (see --restart-held-usb), so leave the same trace for a
+        // debugger rather than dropping it.
+        if (Logger::Instance().Path().empty()) OutputDebugStringW(detail.c_str());
+        return ERROR_GEN_FAILURE;
+    }
+    return ERROR_SUCCESS;
 }
 }

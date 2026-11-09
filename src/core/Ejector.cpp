@@ -15,12 +15,21 @@
 #include "i18n/Strings.h"
 #include "util/Str.h"
 
+// GUID_DEVCLASS_DISKDRIVE {4D36E967-E325-11CE-BFC1-08002BE10318}. devguid.h
+// only declares it and expects the toolchain's uuid library to supply the
+// symbol: MinGW happens to get that from libuuid.a, MSVC would need uuid.lib,
+// which this project does not link. Defining it once here keeps the class check
+// in RestartStopped independent of which library a toolchain drags in.
+EXTERN_C const GUID GUID_DEVCLASS_DISKDRIVE =
+    {0x4D36E967, 0xE325, 0x11CE, {0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18}};
+
 namespace qe {
 namespace {
 
-// PNP_VETO_TYPE values 8..13. MinGW's cfgmgr32.h stops at PNP_VetoDriver, and
-// these are plain enum constants (not macros), so an #ifndef guard would never
-// work - they are defined unconditionally with the values from cfg.h:
+// PNP_VETO_TYPE values 8..13, spelled out so the veto switch below does not
+// depend on how complete a given cfg.h / cfgmgr32.h revision is. They are plain
+// enum constants (not macros), so an #ifdef guard would never work - they are
+// defined unconditionally with the values from cfg.h:
 //   8  PNP_VetoIllegalDeviceRequest   9  PNP_VetoInsufficientPower
 //   10 PNP_VetoNonDisableable         11 PNP_VetoLegacyDriver
 //   12 PNP_VetoInsufficientRights     13 PNP_VetoAlreadyRemoved
@@ -251,10 +260,12 @@ std::wstring Ejector::Describe(const EjectResult& result) {
         }
 
         // What PnP puts in the name buffer depends on the veto type: only
-        // PNP_VetoWindowsApp / PNP_VetoWindowsService / PNP_VetoLegacyDriver
-        // report an application, service or driver name. The others report a
-        // device instance path, and two report nothing at all - labelling all
-        // of them "used by" would misdescribe the device path.
+        // PNP_VetoWindowsApp / PNP_VetoWindowsService / PNP_VetoDriver /
+        // PNP_VetoLegacyDriver report an application, service or driver name
+        // (PNP_VetoDriver is the plain one, hence the driver suffix above).
+        // The other types with a suffix report a device instance path, and the
+        // ones without a suffix report nothing at all - labelling all of them
+        // "used by" would misdescribe a device path.
         if (hasSuffix && !result.vetoApplication.empty()) {
             reason += L"\n\n";
             reason += strings.Format(suffixId, result.vetoApplication);
