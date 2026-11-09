@@ -40,7 +40,7 @@ USB-Switch 是 Windows 托盘里的 USB 安全弹出工具，C++17，无第三�
 | CLI 契约检查 | `python tests\cli.py <exe 路径>`、`python tests\cli-output.py <exe 路径>` |
 | 重新生成图标 | `python tools\make_icon.py` |
 
-CI 用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误；本地改动后请至少保证 `-Wall -Wextra` 下零警告。
+本地改动后请至少保证 `-Wall -Wextra` 下零警告——`.github/workflows/windows.yml` 的 MSVC 流水线用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误，但自动触发已关闭，只在 Actions 页面手动运行。
 
 ## 改动约定
 

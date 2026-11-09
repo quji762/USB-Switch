@@ -1,8 +1,10 @@
 name: Windows build and tests
 
+# Automatic triggers are off: this pipeline only runs when started by hand from
+# the Actions tab (workflow_dispatch). The same checks run locally through
+# tools/run-tests.ps1 and the python checkers, which is how this repository is
+# verified day to day. Re-add push/pull_request here to automate it again.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:

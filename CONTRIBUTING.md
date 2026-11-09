@@ -52,7 +52,7 @@ python tests\cli-output.py dist\usb-switch.exe         # Unicode 输出
 
 改了 `src/ui/` 且有交互桌面时，另跑 `.\tests\gui-smoke.ps1`。自绘几何（按钮圆角、通知卡片、跨 DPI 重排）只能编译检查，视觉效果需要人工确认。
 
-CI 在 MinGW 与 MSVC 两条流水线上以上述检查为基础，MSVC 那条用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误。请至少保证 `-Wall -Wextra` 下零警告。
+`.github/workflows/windows.yml` 里的两条流水线（MinGW 与 MSVC）自动触发已关闭，只在 Actions 页面手动运行；MSVC 那条用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误。无论跑不跑流水线，都请至少保证 `-Wall -Wextra` 下零警告。
 
 ## 提交规范 / Commit messages
 
@@ -72,7 +72,7 @@ CI 在 MinGW 与 MSVC 两条流水线上以上述检查为基础，MSVC 那条�
 
 ## 拉取请求 / Pull requests
 
-一个拉取请求只做一件事，并在描述里写清：改了什么、为什么、验证过什么（跑了上面哪些命令）、是否需要同步文档。CI 需要全绿。
+一个拉取请求只做一件事，并在描述里写清：改了什么、为什么、验证过什么（跑了上面哪些命令）、是否需要同步文档。`.github/workflows/windows.yml` 的两条流水线自动触发已关闭，需要时在 Actions 页面手动运行。
 
 评审节奏与合并时限没有成文承诺——维护者会在有余力时处理。
 

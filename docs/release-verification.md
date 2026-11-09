@@ -22,10 +22,14 @@ GUI 冒烟测试需要交互桌面：
 
 ## 持续集成 / CI
 
-`.github/workflows/windows.yml` 有两条流水线：
+`.github/workflows/windows.yml` 定义了两条流水线（MinGW 与 MSVC），但**自动触发已关闭**：目前只在 Actions 页面手动运行时才会执行。日常验证靠本节的自动化检查加上 `.\tools\release.ps1`。
+
+两条流水线的内容：
 
 - **MinGW** —— 构建、字符串检查、可执行文件资源检查、单元测试、设备枚举，外加托盘 GUI 冒烟和安装包测试。
 - **MSVC** —— Visual Studio 17 2022 生成器，`-DQE_WARNINGS_AS_ERRORS=ON`，覆盖 `/W4 /WX`、静态运行时和清单合并这些 MinGW 走不到的路径。
+
+手动运行：GitHub 仓库的 Actions 页面 → *Windows build and tests* → *Run workflow*。
 
 ## 发布 / Release
 
