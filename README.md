@@ -4,6 +4,8 @@ Windows 托盘里的 USB 安全弹出工具。选中要拔出的 U 盘、移动�
 
 A Windows tray tool for safely removing USB storage. Pick the drive, eject it in one click — and when Windows refuses, see the reason it gave.
 
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
+
 ## 系统要求 / Requirements
 
 Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可执行文件直接导入 `GetDpiForWindow`，更早的系统连加载都做不到，因此不为它们保留兼容条目。
@@ -12,18 +14,14 @@ Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可�
 
 ## 功能 / Features
 
-- **一键安全弹出** —— 走完整的 PnP 停止流程，不假装成功
-- **拒绝就说清原因** —— 系统报告了哪个程序、服务或驱动在占用，就列出来
+- **一键安全弹出，拒绝就说清原因** —— 走完整的 PnP 停止流程；系统报告了哪个程序、服务或驱动在占用，就列出来
 - **查看谁占着文件** —— 被拒绝时，可按进程列出它当下在目标盘上打开的文件
-- **退出存储卡** —— 只退读卡器里的卡，读卡器保持连接（实验功能）
-- **免拔插重连** —— 刚弹出的设备重新上线，不用拔插（实验功能）
-- **插拔通知** —— 右下角一张短暂的卡片，不抢焦点，可整类关闭
-- **设备管理** —— 别名、隐藏设备、按读卡器分组的设备窗口
-- **空卡槽识别** —— 明确无介质的槽位置灰，不拿「容量未知」冒充空槽
-- **SMART** —— 设备窗口里看温度等健康数据，可自选显示项
-- **中英双语**、浅色/深色/跟随系统、全局快捷键、开机自启、命令行与 JSON 输出
+- **退出存储卡与免拔插重连** —— 只退读卡器里的卡、读卡器保持连接；刚弹出的设备重新上线不用拔插（均为实验功能）
+- **插拔通知与设备管理** —— 右下角一张不抢焦点的卡片；别名、隐藏设备、按读卡器分组的设备窗口、空卡槽置灰
+- **SMART 健康数据** —— 设备窗口里看温度等读数，可自选显示项
+- **中英双语、三种外观、全局快捷键、开机自启、命令行与 JSON 输出**
 
-**English:** one-click safe removal through the full PnP stop flow; the veto reason Windows reports, down to the process, service or driver holding the drive; an on-demand list of the files those processes have open; card-only eject and plug-free reconnect (both experimental); connect/disconnect cards; aliases, hidden devices and a reader-grouped device window; empty-slot detection; SMART readings; Chinese and English; light/dark/system appearance; a global hotkey; run at startup; and a command line with JSON output.
+**English:** one-click safe removal through the full PnP stop flow, with the veto reason Windows reports down to the process, service or driver holding the drive; an on-demand list of the files those processes have open; card-only eject and plug-free reconnect (both experimental); connect/disconnect cards, aliases, hidden devices, a reader-grouped device window and empty-slot detection; SMART readings; Chinese and English; light/dark/system appearance; a global hotkey; run at startup; and a command line with JSON output.
 
 ## 安装 / Install
 
@@ -42,9 +40,7 @@ Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可�
 2. 点击托盘图标，按卷标和盘符核对设备，选择「点击安全弹出」。
 3. 默认会弹确认框，选「是」继续；看到「已安全弹出」再拔出。
 
-关闭了通知时，可在菜单中选择「刷新设备列表」核对结果。提示文件被占用，就先保留连接、关闭相关文件或等复制完成，再点「重试」。
-
-**English:** after starting there is no main window — the icon sits next to the clock. Save and close the files on the drive, click the tray icon, match the volume label and drive letter, choose the eject item and confirm. Wait for **Safely removed** before unplugging. If the drive is busy, close its files or let the transfer finish, then choose **Retry**.
+**English:** after starting there is no main window — the icon sits next to the clock. Save and close the files on the drive, click the tray icon, match the volume label and drive letter, choose the eject item and confirm. Wait for **Safely removed** before unplugging.
 
 ### 退出存储卡 / Ejecting a card
 
@@ -77,9 +73,30 @@ Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可�
 .\usb-switch.exe --help
 ```
 
+`--list` 的输出长这样：
+
+```text
+USB-Switch 1.0.0 — removable devices
+[1] CRUZER (E:) — 14.6 GB  [bus=USB, removable=yes, ejectable=yes]
+    USBSTOR\DISK&VEN_SANDISK&PROD_CRUZER&REV_1.26\4C530001250606112345&0
+```
+
 每次调用只接受一个操作；参数写错显示用法并返回退出码 2，不会碰到设备。加 `--json` 可得到机器可读的结果，`--eject --files` 可在被拒绝时查询占用进程打开的文件。完整的参数、退出码和 JSON 字段见 [docs/command-line.md](docs/command-line.md)。
 
 **English:** one action per invocation; a bad command line prints the usage and exits 2 without touching any device. Add `--json` for machine-readable output. See [docs/command-line.md](docs/command-line.md) for the full reference.
+
+## 排障 / Troubleshooting
+
+| 现象 | 处理 |
+|---|---|
+| 任务栏时钟旁看不到图标 | 展开隐藏的托盘图标；Explorer 重启后程序会自动重建图标 |
+| 菜单显示「暂时无法读取设备列表」 | 枚举暂时失败，程序会自动重试，也可手动选「刷新设备列表」。只有扫描成功且确实没有设备时才显示「没有可移动设备」 |
+| 提示文件被占用 | 选「查看打开的文件」看是哪些进程占着，保存并关闭后点「重试弹出」，或等复制完成 |
+| 提示系统正在关闭句柄、或设备暂未允许移除 | 等几秒或等文件操作结束后重试 |
+| 已安全弹出，但设备还在列表里 | 选「刷新设备列表」核对 |
+| 需要日志 | 托盘菜单「打开日志文件夹」 |
+
+**English:** if the icon is missing, expand the hidden tray icons — the app rebuilds it after Explorer restarts. A device list that reads *unavailable* is retrying automatically; *no removable devices* only appears after a successful empty scan. When a drive is busy, use **Show open files**, close what it lists and choose **Retry removal**. *Pending close* and *not allowed to remove* both mean waiting for file operations to finish. Use **Refresh device list** to re-check after a successful eject, and **Open log folder** for the logs.
 
 ## 获取帮助 / Getting help
 
