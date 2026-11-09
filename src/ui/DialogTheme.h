@@ -21,6 +21,125 @@ inline bool SystemDark() {
 inline constexpr UINT_PTR kLightTimer = 0x5553;
 inline constexpr COLORREF darkPaper = RGB(25,33,39), darkInk = RGB(231,241,240);
 inline bool DialogDark(HWND hwnd) { return GetPropW(hwnd,L"USB.Dark") != nullptr; }
+// DPI the owner-drawn geometry is measured at: the one the dialog was last laid
+// out for. The template is converted from DLU to pixels at creation time only;
+// ThemeDialog updates this property on WM_DPICHANGED, together with the control
+// rectangles and the dialog font, so the drawing and the layout stay in step.
+inline int DialogDpi(HWND item) {
+    const UINT_PTR stored = reinterpret_cast<UINT_PTR>(GetPropW(GetParent(item), L"USB.Dpi"));
+    if (stored) return static_cast<int>(stored);
+    const UINT current = GetDpiForWindow(item);
+    return current ? static_cast<int>(current) : 96;
+}
+
+// ---------------------------------------------------------------------------
+// Monitor changes. A dialog template is written in DLU and converted to pixels
+// once, when the window is created; dragging the dialog to a monitor with
+// another scale (WM_DPICHANGED) leaves the frame and every child at those old
+// pixels, while the owner-drawn geometry reads the window's *current* DPI. The
+// two then disagree - at 96dpi a px(5) corner no longer fits the 19px button the
+// template produced on a 200% monitor. The first ApplyDialogTheme call therefore
+// snapshots every child's creation-time rectangle (parent-client pixels) next to
+// the USB.Dpi property it records at the same moment, and ThemeDialog replays
+// the snapshot scaled by the new/old ratio. A dialog without a snapshot is left
+// exactly as it is rather than moved on a guessed ratio.
+// ---------------------------------------------------------------------------
+struct DialogLayout {
+    struct Entry { HWND child; RECT rect; };
+    UINT count = 0;   // entries captured
+    UINT filled = 0;  // write cursor while capturing
+    Entry* entries = nullptr;
+    LOGFONTW font{};  // dialog font at capture time
+    bool hasFont = false;
+};
+
+inline DialogLayout* DialogLayoutOf(HWND hwnd) {
+    return reinterpret_cast<DialogLayout*>(GetPropW(hwnd, L"USB.Layout"));
+}
+
+inline void CaptureDialogLayout(HWND hwnd) {
+    if (DialogLayoutOf(hwnd)) return;
+    UINT total = 0;
+    EnumChildWindows(hwnd, [](HWND, LPARAM value) -> BOOL {
+        ++*reinterpret_cast<UINT*>(value);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&total));
+    auto* layout = new DialogLayout{};
+    layout->count = total;
+    if (total) layout->entries = new DialogLayout::Entry[total];
+    EnumChildWindows(hwnd, [](HWND child, LPARAM value) -> BOOL {
+        auto* target = reinterpret_cast<DialogLayout*>(value);
+        if (!target->entries || target->filled >= target->count) return FALSE;
+        RECT box{};
+        if (!GetWindowRect(child, &box)) return TRUE;
+        // Parent-client pixels: the ratio a DPI change scales them by is the
+        // same as the window's, whatever the client origin happens to be.
+        MapWindowPoints(HWND_DESKTOP, GetParent(child), reinterpret_cast<POINT*>(&box), 2);
+        target->entries[target->filled++] = DialogLayout::Entry{child, box};
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(layout));
+    // The font the controls were handed at creation, so a monitor change can
+    // rebuild it at the new scale instead of leaving the old pixels behind.
+    HFONT base = reinterpret_cast<HFONT>(SendMessageW(hwnd, WM_GETFONT, 0, 0));
+    if (!base && layout->count)
+        base = reinterpret_cast<HFONT>(SendMessageW(layout->entries[0].child, WM_GETFONT, 0, 0));
+    if (base && GetObjectW(base, sizeof(layout->font), &layout->font) > 0) layout->hasFont = true;
+    SetPropW(hwnd, L"USB.Layout", reinterpret_cast<HANDLE>(layout));
+}
+
+inline void ReleaseDialogLayout(HWND hwnd) {
+    if (DialogLayout* layout = DialogLayoutOf(hwnd)) {
+        RemovePropW(hwnd, L"USB.Layout");
+        delete[] layout->entries;
+        delete layout;
+    }
+}
+
+// Every child keeps the rectangle the template gave it, scaled by the DPI ratio.
+inline void RelayoutDialog(HWND hwnd, UINT previous, UINT next) {
+    const DialogLayout* layout = DialogLayoutOf(hwnd);
+    if (!layout || !layout->count || !layout->entries || !previous || !next) return;
+    const int from = static_cast<int>(previous), to = static_cast<int>(next);
+    for (UINT i = 0; i < layout->count; ++i) {
+        const DialogLayout::Entry& entry = layout->entries[i];
+        if (!entry.child || GetParent(entry.child) != hwnd) continue;
+        const RECT& box = entry.rect;
+        const int left = MulDiv(box.left, to, from), top = MulDiv(box.top, to, from);
+        const int right = MulDiv(box.right, to, from), bottom = MulDiv(box.bottom, to, from);
+        SetWindowPos(entry.child, nullptr, left, top, right - left, bottom - top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+// The dialog font rebuilt at the new scale and handed to every control. A
+// control keeps the font it was given, so the previous one is only released
+// once all of them point at the new one; the controls themselves are destroyed
+// before the dialog's WM_NCDESTROY, which is where the new one is released.
+inline void RebuildDialogFont(HWND hwnd, UINT previous, UINT next) {
+    const DialogLayout* layout = DialogLayoutOf(hwnd);
+    if (!layout) return;
+    LOGFONTW log = layout->font;
+    if (layout->hasFont) {
+        log.lfHeight = MulDiv(log.lfHeight, static_cast<int>(next), static_cast<int>(previous));
+    } else {
+        // resources/dialogs.rc: FONT 9, "Microsoft YaHei UI", 400, 0, 1. Only
+        // reached when no font could be read back from the window at all.
+        log = LOGFONTW{};
+        log.lfHeight = -MulDiv(9, static_cast<int>(next), 72);
+        log.lfWeight = FW_NORMAL;
+        log.lfCharSet = DEFAULT_CHARSET;
+        lstrcpynW(log.lfFaceName, L"Microsoft YaHei UI", LF_FACESIZE);
+    }
+    HFONT font = CreateFontIndirectW(&log);
+    if (!font) return;
+    HFONT stale = reinterpret_cast<HFONT>(GetPropW(hwnd, L"USB.Font"));
+    SetPropW(hwnd, L"USB.Font", reinterpret_cast<HANDLE>(font));
+    EnumChildWindows(hwnd, [](HWND child, LPARAM value) -> BOOL {
+        SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(value), FALSE);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(font));
+    if (stale) DeleteObject(stale);
+}
 
 // ---------------------------------------------------------------------------
 // Design tokens. The dialog painter and the toast card share one vocabulary:
@@ -112,6 +231,9 @@ inline LRESULT CALLBACK ButtonSubclass(HWND wnd, UINT msg, WPARAM wp, LPARAM lp,
 // flag is read from the template style before it is replaced by BS_OWNERDRAW,
 // so Enter keeps activating the same button as before. mode: 0 = light owner
 // draw, 1 = dark owner draw, 2 = high contrast (native buttons restored).
+// Which buttons were converted is recorded in the USB.Type property: once the
+// style carries BS_OWNERDRAW, BS_TYPEMASK no longer reports the template type,
+// so the style alone cannot recognise an already converted button.
 inline void ConvertDialogButtons(HWND hwnd, bool dark, bool hc) {
     const LPARAM mode = hc ? 2 : (dark ? 1 : 0);
     EnumChildWindows(hwnd, [](HWND child, LPARAM modeValue) -> BOOL {
@@ -135,7 +257,9 @@ inline void ConvertDialogButtons(HWND hwnd, bool dark, bool hc) {
                     // vanish into the dark paper.
                     SetWindowTheme(child, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
                 }
-            } else if (push) {  // restore native buttons (high contrast)
+            } else {  // restore native buttons (high contrast)
+                // Only buttons this code converted carry the saved type; the
+                // others were never touched and keep their template style.
                 const UINT_PTR saved = reinterpret_cast<UINT_PTR>(GetPropW(child, L"USB.Type"));
                 if (saved) {
                     const LONG_PTR native = saved == 2 ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON;
@@ -179,6 +303,16 @@ inline void ApplyDialogTheme(HWND hwnd, bool animate) {
     // square on purpose.
     DWORD corner = hc ? 1 /*DONOTROUND*/ : 2 /*ROUND*/;
     DwmSetWindowAttribute(hwnd, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &corner, sizeof(corner));
+    // Recorded once: later ApplyDialogTheme calls (theme change, settings
+    // change) must not overwrite the DPI the template was built for.
+    if (!GetPropW(hwnd, L"USB.Dpi")) {
+        const UINT created = GetDpiForWindow(hwnd);
+        SetPropW(hwnd, L"USB.Dpi",
+                 reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(created ? created : 96)));
+    }
+    // Captured once as well, at the DPI recorded above: ThemeDialog scales the
+    // rectangles by the new/old ratio when the dialog changes monitor.
+    if (!DialogLayoutOf(hwnd)) CaptureDialogLayout(hwnd);
     ConvertDialogButtons(hwnd, dark != FALSE, hc);
     KillTimer(hwnd,kLightTimer);
     RemovePropW(hwnd,L"USB.LightStart");
@@ -199,7 +333,7 @@ inline void ApplyDialogTheme(HWND hwnd, bool animate) {
 inline void PaintDialogButton(const DRAWITEMSTRUCT* item) {
     const HWND dialog = GetParent(item->hwndItem);
     const bool hc = HighContrast(), dark = DialogDark(dialog);
-    const int dpi = GetDpiForWindow(item->hwndItem);
+    const int dpi = DialogDpi(item->hwndItem);
     const auto px = [&](int n){ return MulDiv(n, dpi ? dpi : 96, 96); };
     const bool primary = GetPropW(item->hwndItem, L"USB.Primary") != nullptr;
     const bool hover = GetPropW(item->hwndItem, L"USB.Hover") != nullptr;
@@ -221,8 +355,11 @@ inline void PaintDialogButton(const DRAWITEMSTRUCT* item) {
     FillRoundRect(dc, box, radius, skin.fill, skin.border);
     if (focused && !disabled) {
         // A thin keyboard-focus ring just inside the border; on the accent
-        // filled primary it takes the ink color so it stays visible.
-        auto pen = CreatePen(PS_SOLID, px(1), primary ? skin.text : AccentColor(dark));
+        // filled primary it takes the ink color so it stays visible. Under
+        // high contrast the ring comes from the system palette, because the
+        // app accent can match the user's high contrast button face.
+        auto pen = CreatePen(PS_SOLID, px(1), hc ? GetSysColor(COLOR_HIGHLIGHT)
+                                                 : (primary ? skin.text : AccentColor(dark)));
         auto oldPen = SelectObject(dc, pen);
         auto oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
         RoundRect(dc, box.left + px(2), box.top + px(2), box.right - px(2), box.bottom - px(2),
@@ -243,8 +380,10 @@ inline void PaintDialogButton(const DRAWITEMSTRUCT* item) {
             font = primary ? CreateFontIndirectW(&log) : nullptr;
         }
         HGDIOBJ old = SelectObject(dc, font ? font : base);
-        SetTextColor(dc, disabled ? ButtonColors(dark, false, false, false, true).text
-                                  : (hc ? GetSysColor(COLOR_BTNTEXT) : skin.text));
+        // The light-grey disabled ink of the owner-drawn skin would disappear
+        // on a high contrast button face, so the system grey text is used.
+        SetTextColor(dc, hc ? (disabled ? GetSysColor(COLOR_GRAYTEXT) : GetSysColor(COLOR_BTNTEXT))
+                            : (disabled ? ButtonColors(dark, false, false, false, true).text : skin.text));
         RECT textRect{box.left + px(8), box.top, box.right - px(8), box.bottom};
         DrawTextW(dc, text, -1, &textRect,
                   DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
@@ -256,6 +395,28 @@ inline void PaintDialogButton(const DRAWITEMSTRUCT* item) {
 inline INT_PTR ThemeDialog(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     if (msg == WM_INITDIALOG || msg == WM_SETTINGCHANGE || msg == WM_SYSCOLORCHANGE)
         ApplyDialogTheme(hwnd,msg == WM_INITDIALOG);
+    if (msg == WM_DPICHANGED) {
+        // The one place every dialog procedure runs through first, so a monitor
+        // change is answered for all of them: the frame takes the rectangle the
+        // system suggests, the controls and the dialog font are rebuilt from the
+        // creation-time snapshot, and the DPI the drawing measures itself
+        // against moves with them.
+        const UINT next = LOWORD(wp);
+        const auto* suggested = reinterpret_cast<const RECT*>(lp);
+        const UINT_PTR stored = reinterpret_cast<UINT_PTR>(GetPropW(hwnd, L"USB.Dpi"));
+        const UINT previous = stored ? static_cast<UINT>(stored)
+                                     : (GetDpiForWindow(hwnd) ? GetDpiForWindow(hwnd) : 96);
+        if (next && suggested && next != previous) {
+            RelayoutDialog(hwnd, previous, next);
+            RebuildDialogFont(hwnd, previous, next);
+            SetWindowPos(hwnd, nullptr, suggested->left, suggested->top,
+                         suggested->right - suggested->left, suggested->bottom - suggested->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            SetPropW(hwnd, L"USB.Dpi", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(next)));
+            RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_FRAME);
+        }
+        return TRUE;
+    }
     if (msg == WM_TIMER && wp == kLightTimer) {
         const auto start = static_cast<DWORD>(reinterpret_cast<UINT_PTR>(GetPropW(hwnd,L"USB.LightStart")));
         if (!start || GetTickCount() - start >= 640) {
@@ -279,6 +440,14 @@ inline INT_PTR ThemeDialog(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         KillTimer(hwnd,kLightTimer);
         RemovePropW(hwnd,L"USB.Dark");
         RemovePropW(hwnd,L"USB.LightStart");
+        RemovePropW(hwnd,L"USB.Dpi");
+        // Children are gone by now, so no control still points at the font the
+        // last DPI change handed out.
+        if (HFONT font = reinterpret_cast<HFONT>(GetPropW(hwnd, L"USB.Font"))) {
+            RemovePropW(hwnd, L"USB.Font");
+            DeleteObject(font);
+        }
+        ReleaseDialogLayout(hwnd);
     }
     if (msg == WM_CTLCOLORDLG || msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLOREDIT ||
         msg == WM_CTLCOLORLISTBOX || msg == WM_CTLCOLORBTN) {

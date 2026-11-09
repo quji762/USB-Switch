@@ -146,11 +146,17 @@ class ConnectionToast {
         left_=(std::max)(int(mi.rcWork.left),int(mi.rcWork.right)-width_-pad_-px(14));
         top_=mi.rcWork.bottom-height_-pad_-px(14);
         SetWindowTextW(window_,(event_.title+L" — "+event_.name).c_str());
-        start_=GetTickCount64();
         SetWindowPos(window_,HWND_TOPMOST,left_-pad_,top_-pad_,width_+2*pad_,height_+2*pad_,SWP_NOACTIVATE|SWP_SHOWWINDOW);
-        if(!SetTimer(window_,1,32,nullptr))return false;
+        if(!SetTimer(window_,1,32,nullptr)) {
+            // No timer means no ticks, so nothing would ever render into the
+            // window that was just shown: hide it again and keep the event
+            // queued, leaving start_ at zero so the next Show() retries.
+            ShowWindow(window_,SW_HIDE);
+            return false;
+        }
         // Committed only once the card is actually going to show, so a failed
         // Begin leaves the event queued for the next attempt.
+        start_=GetTickCount64();
         queue_.pop_front();
         Tick();
         return true;
@@ -168,12 +174,16 @@ class ConnectionToast {
         }
         // Keep the card above other topmost windows without stealing focus.
         SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+        // With system animations off the card is static: no fade in, no fade
+        // out, the same flag the dialog fade-in is gated on.
         double opacity=1;
-        if(elapsed<220) opacity=elapsed/220.0;
-        else if(elapsed>2640) opacity=(2900-elapsed)/260.0;
+        if(event_.motion) {
+            if(elapsed<220) opacity=elapsed/220.0;
+            else if(elapsed>2640) opacity=(2900-elapsed)/260.0;
+        }
         Render(opacity);
         // Animated draws tick until the plug has seated, then rest; stationary
-        // cards only tick through the fade windows.
+        // cards follow the same schedule, redrawing the same frame.
         if(event_.motion) {
             if(elapsed>=650 && elapsed<2640) SetTimer(window_,1,UINT(2640-elapsed),nullptr);
             else SetTimer(window_,1,32,nullptr);
