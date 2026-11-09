@@ -49,6 +49,14 @@ private:
     void OnTrayNotify(WPARAM wParam, LPARAM lParam);
     void OnDeviceChange(UINT event, LPARAM data);
     void OnRescanTimer();
+    // Arms kRescanTimerId. SetTimer replaces an armed timer, so an event burst
+    // would otherwise keep pushing the deadline out and starve the scan; the
+    // reset budget (kRescanMaxResets) bounds how far it can be extended.
+    void ArmRescanTimer(UINT delayMs);
+    void DisarmRescanTimer();
+    // Same hidden-device lookup the tray menu uses.
+    bool DeviceHidden(const std::wstring& instanceId) const;
+    static size_t VisibleDeviceCount(const std::unordered_map<std::wstring, std::wstring>& names);
     // position == nullptr means "use the cursor" (mouse activation).
     void ShowTrayMenu(const POINT* position = nullptr);
     void OnMenuCommand(UINT commandId);
@@ -93,6 +101,10 @@ private:
     // Suppresses connect/disconnect balloons for the initial scan at startup.
     bool firstScan_ = true;
     UINT scanRetryMs_ = 0;  // Nonzero while the last good snapshot is stale.
+    // True while the debounce/backoff timer for kRescanTimerId is armed.
+    bool rescanPending_ = false;
+    // How many extensions the armed debounce has already spent.
+    int rescanResets_ = 0;
     bool trayCreationFailed_ = false;
     // True while icon_ came from LoadImage and must be destroyed.
     mutable bool ownsIcon_ = true;

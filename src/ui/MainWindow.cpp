@@ -61,6 +61,15 @@ constexpr UINT kCommandLogs = 0x2005;
 constexpr UINT kCommandAbout = 0x2003;
 constexpr UINT kCommandExit = 0x2004;
 
+// RestartStopped (and the elevated helper that returns its value as an exit
+// code) reports a queued restart as ERROR_SUCCESS_REBOOT_REQUIRED: SetupApi set
+// DI_NEEDRESTART or DI_NEEDREBOOT, which is a success the system will only apply
+// later - not a failure. Comparing against ERROR_SUCCESS alone would render it
+// as a generic "could not reconnect".
+bool ReconnectSucceeded(DWORD code) {
+    return code == ERROR_SUCCESS || code == ERROR_SUCCESS_REBOOT_REQUIRED;
+}
+
 // One physical insertion produces several WM_DEVICECHANGE messages (disk
 // interface, volume, device tree); a short timer collapses them into one scan.
 constexpr UINT_PTR kRescanTimerId = 1;
@@ -68,6 +77,11 @@ constexpr UINT_PTR kTrayRetryTimerId = 2;
 constexpr UINT_PTR kReconnectTimer = 3;
 
 constexpr UINT kRescanDelayMs = 250;
+// How many times one debounce may be extended by a further device event. One
+// physical insertion produces a handful of messages, so this leaves the
+// trailing-edge behavior untouched while capping a sustained storm at
+// kRescanDelayMs * (kRescanMaxResets + 1) after the first event.
+constexpr int kRescanMaxResets = 8;
 
 struct FilesDialogData { std::wstring text; bool retry; };
 INT_PTR CALLBACK OpenFilesProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -110,6 +124,12 @@ bool MainWindow::Create() {
         return false;
     }
 
+    // Registered before the window exists on purpose: WM_CREATE is delivered
+    // synchronously inside CreateWindowExW below, and a TaskbarCreated
+    // broadcast that arrives during it would find the message id still zero
+    // and silently drop the one icon rebuild startup depends on.
+    taskbarCreatedMessage_ = RegisterWindowMessageW(L"TaskbarCreated");
+
     // A hidden window: no WS_VISIBLE, so the app lives only in the tray.
     hwnd_ = CreateWindowExW(0, kClassName, QUICKEJECT_APP_NAME_W, WS_OVERLAPPED, CW_USEDEFAULT,
                             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, instance_,
@@ -118,7 +138,6 @@ bool MainWindow::Create() {
         QE_LOG_ERROR(L"CreateWindowEx failed: %lu", GetLastError());
         return false;
     }
-    taskbarCreatedMessage_ = RegisterWindowMessageW(L"TaskbarCreated");
     return true;
 }
 
@@ -167,13 +186,49 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
                     auto code = FinishedRestart(restartProcess_.Get());
                     if (!code) return 0; // Still running: keep the menu action disabled.
                     restartProcess_.Reset();
-                    if (*code != ERROR_SUCCESS) {
+                    if (*code == ERROR_SUCCESS_REBOOT_REQUIRED) {
+                        // The helper queued the restart instead of performing it:
+                        // the same situation as the synchronous 3010 below, so the
+                        // same notice, and no point in polling for a device that
+                        // cannot show up before the reboot.
+                        QE_LOG_INFO(L"restart helper queued a reboot (%lu)", *code);
+                        KillTimer(hwnd_, kReconnectTimer);
+                        reconnectDeadline_ = 0;
+                        const auto& strings = i18n::I18n::Instance();
+                        MessageBoxW(PromptOwner(), strings.Get(i18n::StrId::ReconnectRebootPending),
+                                    QUICKEJECT_APP_NAME_W, MB_ICONINFORMATION);
+                        return 0;
+                    }
+                    if (*code == ERROR_ALREADY_EXISTS) {
+                        // The device came back on its own while the UAC prompt
+                        // was up: the helper's RestartStopped found it already
+                        // enumerated and returned the same value the
+                        // synchronous reconnect path reports as
+                        // DeviceReappeared. FormatMessage for it ("Cannot create
+                        // a file when that file already exists.") would blame
+                        // the user for a file system mistake they never made,
+                        // so drop the stale record and say what happened.
+                        QE_LOG_INFO(L"restart helper reported the device already back (%lu)", *code);
+                        KillTimer(hwnd_, kReconnectTimer);
+                        reconnectDeadline_ = 0;
+                        stoppedDisk_.clear();
+                        stoppedTarget_.clear();
+                        stoppedSeenAbsent_ = false;
+                        const auto& strings = i18n::I18n::Instance();
+                        MessageBoxW(PromptOwner(), strings.Get(i18n::StrId::DeviceReappeared),
+                                    QUICKEJECT_APP_NAME_W, MB_ICONINFORMATION);
+                        return 0;
+                    }
+                    if (!ReconnectSucceeded(*code)) {
                         KillTimer(hwnd_, kReconnectTimer);
                         reconnectDeadline_ = 0;
                         const auto& strings = i18n::I18n::Instance();
                         QE_LOG_WARN(L"Restart helper exited with %lu", *code);
                         const auto reason = str::Win32ErrorMessage(*code) + L" (" + std::to_wstring(*code) + L")";
-                        MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectFailed, reason).c_str(),
+                        // Owned by the innermost dialog: with the hidden window
+                        // as the owner the box would sit behind whatever dialog
+                        // is open, and the notice would never be seen.
+                        MessageBoxW(PromptOwner(), strings.Format(i18n::StrId::ReconnectFailed, reason).c_str(),
                                     QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
                         return 0;
                     }
@@ -183,7 +238,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
                     restartProcess_.Reset();
                     KillTimer(hwnd_, kReconnectTimer);
                     reconnectDeadline_ = 0;
-                    MessageBoxW(hwnd_, i18n::I18n::Instance().Get(i18n::StrId::ReconnectTimeout),
+                    MessageBoxW(PromptOwner(), i18n::I18n::Instance().Get(i18n::StrId::ReconnectTimeout),
                                 QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
                 }
                 return 0;
@@ -262,6 +317,19 @@ bool MainWindow::OnCreate(HWND hwnd) {
 void MainWindow::OnDestroy() {
     connectionToast_.Clear();
     restartProcess_.Reset();
+    // The timers die with the window anyway; stopping them here keeps the
+    // teardown explicit and prevents a pending debounce, tray retry or
+    // reconnect poll from touching the tray icon while it is being removed.
+    KillTimer(hwnd_, kRescanTimerId);
+    KillTimer(hwnd_, kTrayRetryTimerId);
+    KillTimer(hwnd_, kReconnectTimer);
+    rescanPending_ = false;
+    menuOpen_ = false;
+    stoppedDisk_.clear();
+    stoppedTarget_.clear();
+    stoppedName_.clear();
+    stoppedSeenAbsent_ = false;
+    reconnectDeadline_ = 0;
     UnregisterHotKey(hwnd_, kMenuHotkey);
     notifier_.Unregister();
     tray_.Remove();
@@ -299,6 +367,18 @@ HICON MainWindow::LoadTrayIconAt(int size) const {
 }
 
 void MainWindow::OnTrayNotify(WPARAM wParam, LPARAM lParam) {
+    // The shell keeps delivering tray callbacks while a modal dialog has
+    // disabled this window (that dialog's own loop pumps them). Opening the
+    // menu then would re-enter ShowTrayMenu - and through it EjectDevice and
+    // the reconnect record - from inside the dialog, so give the activation to
+    // the popup exactly like WM_HOTKEY and kWakeMessage do.
+    if (hwnd_ == nullptr) return;
+    if (!IsWindowEnabled(hwnd_)) {
+        const HWND popup = GetLastActivePopup(hwnd_);
+        // GetLastActivePopup reports hwnd_ itself when it owns no popup.
+        if (popup != nullptr && popup != hwnd_) SetForegroundWindow(popup);
+        return;
+    }
     switch (LOWORD(lParam)) {
         case WM_CONTEXTMENU:
         case NIN_SELECT:
@@ -324,11 +404,33 @@ void MainWindow::OnDeviceChange(UINT event, LPARAM data) {
     // While the failure backoff schedules the next scan, do not reset its
     // timer: a device-event storm would otherwise pin the retries at the
     // shortest interval. The pending backoff timer already covers this event.
-    if (!scanRetryMs_) SetTimer(hwnd_, kRescanTimerId, kRescanDelayMs, nullptr);
+    if (!scanRetryMs_) ArmRescanTimer(kRescanDelayMs);
+}
+
+void MainWindow::ArmRescanTimer(UINT delayMs) {
+    // SetTimer replaces an armed timer instead of queueing another one, so
+    // re-arming on every event would keep pushing the deadline out: for as long
+    // as the events arrive closer together than the delay, the scan is starved
+    // and never runs. The reset budget bounds that without giving up the
+    // trailing edge the debounce exists for - a normal insertion still waits
+    // for its last events, and only a sustained storm spends the budget.
+    if (rescanPending_) {
+        if (rescanResets_ >= kRescanMaxResets) return;  // let the armed timer run
+        ++rescanResets_;
+    } else {
+        rescanResets_ = 0;
+    }
+    if (SetTimer(hwnd_, kRescanTimerId, delayMs, nullptr) != 0) rescanPending_ = true;
+}
+
+void MainWindow::DisarmRescanTimer() {
+    KillTimer(hwnd_, kRescanTimerId);
+    rescanPending_ = false;
+    rescanResets_ = 0;
 }
 
 void MainWindow::OnRescanTimer() {
-    KillTimer(hwnd_, kRescanTimerId);
+    DisarmRescanTimer();
     RefreshDevices();
 }
 
@@ -340,13 +442,15 @@ void MainWindow::RefreshDevices() {
         if (!scanRetryMs_ && notify)
             tray_.ShowBalloon(QUICKEJECT_APP_NAME_W, strings.Get(i18n::StrId::MenuScanUnavailable), NIIF_WARNING);
         scanRetryMs_ = scanRetryMs_ ? (std::min)(scanRetryMs_ * 2, 30000u) : 1000u;
-        SetTimer(hwnd_, kRescanTimerId, scanRetryMs_, nullptr);
+        // Replace the pending debounce with the longer backoff interval.
+        DisarmRescanTimer();
+        ArmRescanTimer(scanRetryMs_);
         RebuildTrayTip();
         return;
     }
 
     scanRetryMs_ = 0;
-    KillTimer(hwnd_, kRescanTimerId);
+    DisarmRescanTimer();
     const auto snapshot = devices_.Devices();
     if (!stoppedDisk_.empty()) {
         if (devices_.FindByInstanceId(stoppedDisk_)) {
@@ -369,6 +473,10 @@ void MainWindow::RefreshDevices() {
     }
     if (!firstScan_) {
         for (const auto& device : snapshot) {
+            // Hidden devices are invisible to the tray menu, so they must not
+            // produce cards either - otherwise hiding one and reconnecting it
+            // still pops a notification for something the menu will not list.
+            if (DeviceHidden(device.instanceId)) continue;
             if (previousNames_.find(device.instanceId) == previousNames_.end()) {
                 QE_LOG_INFO(L"device connected: %ls", device.displayName.c_str());
                 if (notify) {
@@ -377,6 +485,7 @@ void MainWindow::RefreshDevices() {
             }
         }
         for (const auto& entry : previousNames_) {
+            if (DeviceHidden(entry.first)) continue;
             if (!devices_.FindByInstanceId(entry.first)) {
                 QE_LOG_INFO(L"device disconnected: %ls", entry.second.c_str());
                 if (notify) {
@@ -421,14 +530,30 @@ void MainWindow::RestoreTrayIcon() {
     }
 }
 
+bool MainWindow::DeviceHidden(const std::wstring& instanceId) const {
+    // Same lookup the tray menu uses, so the tooltip count and the
+    // connect/disconnect cards agree with what the menu actually lists.
+    const auto& hidden = Settings::Instance().Data().hiddenDevices;
+    return hidden.count(str::Lower(instanceId)) != 0;
+}
+
+size_t MainWindow::VisibleDeviceCount(const std::unordered_map<std::wstring, std::wstring>& names) {
+    const auto& hidden = Settings::Instance().Data().hiddenDevices;
+    size_t visible = 0;
+    for (const auto& entry : names)
+        if (!hidden.count(str::Lower(entry.first))) ++visible;
+    return visible;
+}
+
 void MainWindow::RebuildTrayTip() {
     const auto& strings = i18n::I18n::Instance();
     std::wstring tooltip = strings.Get(i18n::StrId::AppTooltip);
     if (scanRetryMs_) {
         tooltip += L" — ";
         tooltip += strings.Get(i18n::StrId::MenuScanUnavailable);
-    } else if (!previousNames_.empty()) {
-        tooltip += str::Format(L" (%zu)", previousNames_.size());
+    } else if (const size_t visible = VisibleDeviceCount(previousNames_); visible > 0) {
+        // Only what the menu can show: a hidden device must not be counted.
+        tooltip += str::Format(L" (%zu)", visible);
     }
     tray_.UpdateTooltip(tooltip);
 }
@@ -606,13 +731,42 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
                 if (error == ERROR_CANCELLED) return;
             }
         }
-        if (error == ERROR_SUCCESS) {
+        if (error == ERROR_SUCCESS_REBOOT_REQUIRED) {
+            // A queued restart is only applied at the next boot: the device
+            // cannot reappear before then, so the 10s poll below would end in
+            // ReconnectTimeout without ever mentioning the reboot. Tell the user
+            // what actually has to happen instead, and leave the menu entry in
+            // place so the reconnect can be retried after the reboot.
+            restartProcess_.Reset();
+            KillTimer(hwnd_, kReconnectTimer);
+            reconnectDeadline_ = 0;
+            MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectRebootPending), QUICKEJECT_APP_NAME_W,
+                        MB_ICONINFORMATION);
+        } else if (ReconnectSucceeded(error)) {
             reconnectDeadline_ = GetTickCount64() + 10000;
             if (!SetTimer(hwnd_, kReconnectTimer, 500, nullptr)) {
                 restartProcess_.Reset();
                 reconnectDeadline_ = 0;
                 MessageBoxW(hwnd_, strings.Get(i18n::StrId::ReconnectTimeout), QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
             }
+        } else if (error == ERROR_ALREADY_EXISTS) {
+            // RestartStopped reports this when the disk is already enumerated
+            // again: it came back on its own, so there is nothing left to
+            // restart. Rendering FormatMessage(ERROR_ALREADY_EXISTS) ("Cannot
+            // create a file when that file already exists.") would blame the
+            // user for a file system mistake they never made, so drop the
+            // stale record and let the scan below refresh the menu.
+            restartProcess_.Reset();
+            KillTimer(hwnd_, kReconnectTimer);
+            reconnectDeadline_ = 0;
+            stoppedDisk_.clear();
+            stoppedTarget_.clear();
+            stoppedSeenAbsent_ = false;
+            // Nothing was left to restart, so the device really did come back by
+            // itself: say so instead of letting the refreshed menu imply the
+            // reconnect did something.
+            MessageBoxW(hwnd_, strings.Get(i18n::StrId::DeviceReappeared), QUICKEJECT_APP_NAME_W,
+                        MB_ICONINFORMATION);
         } else {
             MessageBoxW(hwnd_, strings.Format(i18n::StrId::ReconnectFailed, str::Win32ErrorMessage(error)).c_str(),
                         QUICKEJECT_APP_NAME_W, MB_ICONWARNING);
@@ -630,6 +784,10 @@ void MainWindow::ShowTrayMenu(const POINT* position) {
         if (!settings.Save()) {
             entries = previous;
             MessageBoxW(hwnd_,strings.Get(i18n::StrId::SettingsSaveFailed),QUICKEJECT_APP_NAME_W,MB_ICONWARNING);
+        } else {
+            // The visible set just changed: keep the tooltip count in step with
+            // the menu instead of waiting for the next scan.
+            RebuildTrayTip();
         }
     } else if (id >= kMediaBase) {
         const auto index = id - kMediaBase;
@@ -699,6 +857,11 @@ void MainWindow::EjectMedium(const Device& device) {
             auto reason = str::Win32ErrorMessage(result.error);
             if (std::wstring_view(result.stage) == L"lock_volume")
                 reason = std::wstring(strings.Get(StrId::MediaLockFailed)) + L"\n" + reason;
+            else if (std::wstring_view(result.stage) == L"volume_multi_extent")
+                // ERROR_NOT_SUPPORTED's own text ("The request is not
+                // supported.") says nothing a user can act on; the stage already
+                // carries the whole explanation.
+                reason = strings.Get(StrId::MediaEjectMultiExtent);
             MessageBoxW(owner, strings.Format(StrId::EjectFailText, name, reason).c_str(),
                         strings.Get(StrId::MenuMedia), MB_ICONWARNING);
         } else if (Settings::Instance().Data().showNotifications) {
@@ -788,7 +951,12 @@ void MainWindow::EjectDevice(const Device& device) {
                         if (ch == L'\n') data.text += L'\r';
                         data.text += ch;
                     }
-                    selected = static_cast<int>(DialogBoxParamW(instance_,MAKEINTRESOURCEW(IDD_OPEN_FILES),hwnd_,
+                    // Owned by the innermost dialog, like the task dialog above
+                    // it and the confirmations below it: EjectDevice can run
+                    // under the device window, and this dialog then belongs on
+                    // top of that window. From the tray menu PromptOwner()
+                    // returns hwnd_, so nothing changes there.
+                    selected = static_cast<int>(DialogBoxParamW(instance_,MAKEINTRESOURCEW(IDD_OPEN_FILES),owner,
                                                                 OpenFilesProc,reinterpret_cast<LPARAM>(&data)));
                 }
                 if (offerRetry && selected == IDRETRY) continue;
@@ -875,7 +1043,10 @@ INT_PTR CALLBACK SmartOptionsProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     if (auto result = ThemeDialog(hwnd, message, wParam, lParam)) return result;
     if (PaintDialogHeader(message, lParam)) return TRUE;
     if (message == WM_INITDIALOG) {
-        ApplyDialogTheme(hwnd, false);
+        // ThemeDialog above already applied the theme with animate=true, which
+        // started the 640ms header highlight. Calling ApplyDialogTheme again
+        // here would only KillTimer that highlight and drop its start marker,
+        // so the dialog would never light up as documented in the README.
         const auto& strings = i18n::I18n::Instance();
         const auto& show = Settings::Instance().Data();
         SetWindowTextW(hwnd, strings.Get(i18n::StrId::SmartTitle));
@@ -1039,7 +1210,9 @@ INT_PTR CALLBACK MainWindow::DeviceWindowProc(HWND hwnd, UINT message, WPARAM wP
         state = new DeviceWindowState{reinterpret_cast<MainWindow*>(lParam), {}};
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
         state->owner->promptOwner_ = hwnd;
-        ApplyDialogTheme(hwnd, false);
+        // No second ApplyDialogTheme here: ThemeDialog already ran it with
+        // animate=true and started the header-highlight timer, which a second
+        // call would immediately kill.
         state->bold = nullptr;
         if (HFONT base = reinterpret_cast<HFONT>(SendMessageW(hwnd, WM_GETFONT, 0, 0))) {
             LOGFONTW font{};

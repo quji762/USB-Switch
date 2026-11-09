@@ -9,7 +9,12 @@
 namespace qe {
 namespace {
 
-void CopyFixed(wchar_t* destination, size_t capacity, std::wstring_view source) {
+// Copies into a fixed-size shell buffer. Taking the array keeps the capacity a
+// compile-time constant, so a zero-sized buffer cannot underflow capacity - 1
+// (and no caller can pass a raw pointer whose length nobody checks).
+template <size_t capacity>
+void CopyFixed(wchar_t (&destination)[capacity], std::wstring_view source) {
+    static_assert(capacity > 0, "tray buffer must have room for a terminator");
     const size_t count = source.size() < capacity - 1 ? source.size() : capacity - 1;
     if (count > 0) std::wmemcpy(destination, source.data(), count);
     destination[count] = L'\0';
@@ -18,15 +23,15 @@ void CopyFixed(wchar_t* destination, size_t capacity, std::wstring_view source) 
 }  // namespace
 
 void TrayIcon::CopyToTip(std::wstring_view tooltip) {
-    CopyFixed(data_.szTip, std::size(data_.szTip), tooltip);
+    CopyFixed(data_.szTip, tooltip);
 }
 
 void TrayIcon::CopyToBalloonTitle(std::wstring_view title) {
-    CopyFixed(data_.szInfoTitle, std::size(data_.szInfoTitle), title);
+    CopyFixed(data_.szInfoTitle, title);
 }
 
 void TrayIcon::CopyToBalloonText(std::wstring_view text) {
-    CopyFixed(data_.szInfo, std::size(data_.szInfo), text);
+    CopyFixed(data_.szInfo, text);
 }
 
 bool TrayIcon::Create(HWND hwnd, UINT callbackMessage, HICON icon, std::wstring_view tooltip) {
@@ -76,8 +81,10 @@ void TrayIcon::ShowBalloon(std::wstring_view title, std::wstring_view text, DWOR
     CopyToBalloonText(text);
     notify_(NIM_MODIFY, &data_);
 
-    // Clear the local payload only. Sending NIF_INFO with empty text tells the
-    // shell to remove the notification that was just displayed.
+    // Local hygiene only: the notification was handed to the shell with the
+    // NIM_MODIFY above, and the shell owns it from there (its timeout, its
+    // dismissal). Nothing is sent back - in particular no empty NIF_INFO - so
+    // the payload is simply forgotten until the next balloon replaces it.
     data_.szInfo[0] = L'\0';
     data_.szInfoTitle[0] = L'\0';
 }
