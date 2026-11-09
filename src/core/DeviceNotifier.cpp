@@ -65,10 +65,12 @@ bool DeviceNotifier::IsRelevantChange(UINT event, LPARAM data) {
     const auto* header = reinterpret_cast<const DEV_BROADCAST_HDR*>(data);
     if (header == nullptr || header->dbch_size < sizeof(DEV_BROADCAST_HDR)) return false;
 
+    // DBT_DEVTYP_HANDLE broadcasts are delivered only to windows that registered
+    // a DEV_BROADCAST_HANDLE filter. Register() registers a device-interface
+    // filter, so such a message can never arrive here and is not accepted.
     switch (header->dbch_devicetype) {
         case DBT_DEVTYP_VOLUME:
         case DBT_DEVTYP_DEVICEINTERFACE:
-        case DBT_DEVTYP_HANDLE:
             return true;
         default:
             return false;

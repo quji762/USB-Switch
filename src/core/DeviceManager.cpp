@@ -34,6 +34,19 @@ std::string DescriptorStringAt(const BYTE* base, DWORD validBytes, DWORD offset)
     return std::string(text, length);
 }
 
+// SetupAPI and the CM registry API both report how many bytes they wrote, and
+// either may fill the caller's buffer exactly without leaving a terminator.
+// The end is therefore searched for inside the reported byte count, never past
+// it: a value that exactly fills the buffer is read in full, and one that is
+// short is never followed into memory the API did not touch.
+std::wstring WideStringFromBytes(const WCHAR* buffer, size_t bytes, size_t capacityChars) {
+    if (buffer == nullptr || bytes < sizeof(WCHAR)) return {};
+    size_t chars = bytes / sizeof(WCHAR);
+    if (chars > capacityChars) chars = capacityChars;
+    chars = wcsnlen(buffer, chars);
+    return std::wstring(buffer, chars);
+}
+
 std::wstring QueryDevicePropertyString(HDEVINFO info, const SP_DEVINFO_DATA& data,
                                        const DEVPROPKEY& key) {
     WCHAR buffer[512];
@@ -41,7 +54,8 @@ std::wstring QueryDevicePropertyString(HDEVINFO info, const SP_DEVINFO_DATA& dat
     DWORD size = sizeof(buffer);
     if (SetupDiGetDevicePropertyW(info, const_cast<PSP_DEVINFO_DATA>(&data), &key, &type,
                                   reinterpret_cast<PBYTE>(buffer), size, &size, 0)) {
-        return type == DEVPROP_TYPE_STRING ? std::wstring(buffer) : std::wstring();
+        return type == DEVPROP_TYPE_STRING ? WideStringFromBytes(buffer, size, std::size(buffer))
+                                           : std::wstring();
     }
     if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) return {};
     std::vector<WCHAR> large(static_cast<size_t>(size) / sizeof(WCHAR) + 2, L'\0');
@@ -50,7 +64,8 @@ std::wstring QueryDevicePropertyString(HDEVINFO info, const SP_DEVINFO_DATA& dat
                                    reinterpret_cast<PBYTE>(large.data()), size, &size, 0)) {
         return {};
     }
-    return type == DEVPROP_TYPE_STRING ? std::wstring(large.data()) : std::wstring();
+    return type == DEVPROP_TYPE_STRING ? WideStringFromBytes(large.data(), size, large.size())
+                                       : std::wstring();
 }
 
 std::wstring NodeRegistryString(DEVINST node, ULONG property) {
@@ -60,10 +75,7 @@ std::wstring NodeRegistryString(DEVINST node, ULONG property) {
     if (CM_Get_DevNode_Registry_PropertyW(node, property, &type, buffer, &bytes, 0) != CR_SUCCESS ||
         type != REG_SZ || bytes < sizeof(WCHAR) || bytes > sizeof(buffer) || bytes % 2 || buffer[0] == L'\0')
         return {};
-    // The API may fill the buffer exactly, without a terminator.
-    ULONG chars = bytes / sizeof(WCHAR);
-    if (buffer[chars - 1] == L'\0') --chars;
-    return std::wstring(buffer, chars);
+    return WideStringFromBytes(buffer, bytes, std::size(buffer));
 }
 
 // The USB device that owns a card-reader slot, stopping before a hub so two
@@ -232,13 +244,17 @@ bool DeviceManager::CollectDiskInterfaces(std::vector<DiskCandidate>& disks) {
         }
 
         DiskCandidate disk;
-        disk.diskInterface = detail->DevicePath;
+        // DevicePath is only guaranteed to be terminated inside the bytes the
+        // API reported, so the scan is bounded by that size.
+        const size_t pathOffset = offsetof(SP_DEVICE_INTERFACE_DETAIL_DATA_W, DevicePath);
+        const size_t pathChars = detailSize > pathOffset ? (detailSize - pathOffset) / sizeof(WCHAR) : 0;
+        disk.diskInterface.assign(detail->DevicePath, wcsnlen(detail->DevicePath, pathChars));
         disk.devInst = deviceData.DevInst;
 
         WCHAR instanceId[512];
         if (SetupDiGetDeviceInstanceIdW(info.Get(), &deviceData, instanceId,
                                         static_cast<DWORD>(std::size(instanceId)), nullptr)) {
-            disk.instanceId = instanceId;
+            disk.instanceId.assign(instanceId, wcsnlen(instanceId, std::size(instanceId)));
         }
         disk.friendlyName = QueryDevicePropertyString(info.Get(), deviceData, DEVPKEY_Device_FriendlyName);
         disk.deviceDescription =
@@ -301,7 +317,10 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
 
     do {
         DWORD needed = 0;
-        GetVolumePathNamesForVolumeNameW(volumeName, nullptr, 0, &needed);
+        if (!GetVolumePathNamesForVolumeNameW(volumeName, nullptr, 0, &needed)) {
+            QE_LOG_DEBUG(L"mount points of %ls unavailable: %lu", volumeName, GetLastError());
+            continue;
+        }
         if (needed == 0) continue;
         std::vector<WCHAR> mountPoints(static_cast<size_t>(needed) + 2, L'\0');
         if (!GetVolumePathNamesForVolumeNameW(volumeName, mountPoints.data(), needed, &needed)) {
@@ -324,8 +343,19 @@ bool DeviceManager::AttachVolumes(std::vector<DiskCandidate>& disks) {
                 0, &number, sizeof(number), &returned, nullptr) ||
             returned < sizeof(number) || number.DeviceType != FILE_DEVICE_DISK) continue;
 
+        // Two interfaces can report the same device number; only the first one
+        // receives the volume data, so the duplicate is logged rather than
+        // dropped without a trace.
+        bool attached = false;
         for (auto& disk : disks) {
             if (disk.deviceNumber == 0xFFFFFFFF || disk.deviceNumber != number.DeviceNumber) continue;
+            if (attached) {
+                QE_LOG_DEBUG(L"device number %lu also matches %ls; only the first interface "
+                             L"receives volume data",
+                             number.DeviceNumber, disk.diskInterface.c_str());
+                break;
+            }
+            attached = true;
             disk.volumeInterfaces.push_back(devicePath);
             if (driveType == DRIVE_REMOVABLE) disk.volumeIsRemovable = true;
             for (const WCHAR* mount = mountPoints.data(); *mount; mount += std::wcslen(mount) + 1) {

@@ -12,8 +12,10 @@
 //      same device number, which is how drive letters, volume labels and sizes
 //      end up on the right device.
 //
-// Only devices that are USB or report removable media are exposed - a fixed
-// internal disk is never something this tool should touch.
+// Only devices that are USB, report removable media, or own a mounted volume
+// that reports DRIVE_REMOVABLE are exposed - a fixed internal disk is never
+// something this tool should touch. The third condition keeps a device whose
+// storage descriptor IOCTL failed (see CollectDiskInterfaces) in the list.
 
 #include <functional>
 #include <optional>
