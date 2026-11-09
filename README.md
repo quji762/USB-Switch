@@ -126,25 +126,15 @@ USB-Switch 1.0.0 — removable devices
 .\build.ps1                          # 自动探测工具链，产物在 dist\
 ```
 
-测试、CI 与发布验证见 [docs/release-verification.md](docs/release-verification.md)。
+测试、CI 与发布验证见 [docs/release-verification.md](docs/release-verification.md)。想改代码或提 PR，先看 [CONTRIBUTING.md](CONTRIBUTING.md)；编码代理的操作指令在 [AGENTS.md](AGENTS.md)。
 
-**English:** CMake 3.16+ and any C++17 compiler. `.\build.ps1` detects the toolchain and collects the artifacts in `dist\`.
+**English:** CMake 3.16+ and any C++17 compiler. `.\build.ps1` detects the toolchain and collects the artifacts in `dist\`. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request; [AGENTS.md](AGENTS.md) holds the instructions for coding agents.
 
-### 代码结构 / Layout
+### 架构 / Architecture
 
-```text
-src/
-├── main.cpp            入口：参数解析、CLI 分发、消息循环
-├── app/                应用外壳：启动顺序、单实例、设置、日志、开机自启
-├── core/               与 UI 无关的设备逻辑：枚举、弹出、退卡、占用诊断、SMART、端口重连
-├── ui/                 托盘、隐藏窗口与消息循环、对话框主题、通知卡片
-├── i18n/               中英字符串表与占位符格式化
-└── util/               UTF-8/UTF-16 与格式化、JSON 解析、Win32 RAII
-```
+组件边界、从枚举到弹出的数据流、持久化与信任边界、以及已经付出的取舍，见 [docs/architecture.md](docs/architecture.md)；设计决策的理由见 [docs/adr/](docs/adr/)。
 
-界面语言目前只有简体中文和英语：文案集中在 `src/i18n/Strings.cpp` 的两列表，`tools/check-strings.py` 逐条校验非空与占位符一致。新增一种语言需要同时改这张表、语言识别和校验脚本。
-
-**English:** `core/` holds everything UI-independent. Adding a language means the string table, the language detection and the checker all change together — it is not just another column.
+**English:** component boundaries, the enumeration-to-eject data flow, persistence, trust boundaries and the trade-offs already paid are in [docs/architecture.md](docs/architecture.md), with the rationale in [docs/adr/](docs/adr/).
 
 ## 许可证 / License
 
