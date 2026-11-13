@@ -6,6 +6,12 @@ This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [未发布] / [Unreleased]
 
+## [1.0.0] - 2026-11-13
+
+第一个使用重设后版本号的版本，功能涵盖下列全部早期开发记录。
+
+The first release under the reset version number. Its feature set covers all of the early development records below.
+
 ### 新增 / Added
 
 - 对话框跨显示器迁移时按新 DPI 重建窗口与控件布局。
@@ -40,12 +46,6 @@ This project follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 - 日志写入失败时不再被静默吞掉。
 - SMART 读取失败时记录 sense 数据；温度描述符补上版本与长度校验。
 - `GetMessageW` 出错时托盘进程不再以退出码 0 结束。
-
-## [1.0.0]
-
-第一个使用重设后版本号的版本，功能涵盖下列全部早期开发记录。
-
-The first release under the reset version number. Its feature set covers all of the early development records below.
 
 ## 早期开发记录 / Before the 1.0.0 reset
 

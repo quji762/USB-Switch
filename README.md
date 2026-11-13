@@ -25,12 +25,14 @@ Windows 10 版本 1607（10.0.14393）或更新版本，包括 Windows 11。可�
 
 ## 安装 / Install
 
+[1.0.0 发布页](https://github.com/quji762/USB-Switch/releases/tag/1.0.0)提供 Windows 安装包和便携 ZIP。安装包未签名，首次运行时 Windows 可能显示 SmartScreen 提示。
+
 | 版本 | 做法 |
 |---|---|
-| 安装版 | 运行 `usb-switch-setup-*.exe`。每用户安装到 `%LOCALAPPDATA%\Programs`，不弹 UAC |
-| 便携版 | 把 ZIP 解压到电脑本地，双击 `usb-switch.exe` |
+| 安装版 | 运行 `usb-switch-setup-1.0.0.0.exe`。每用户安装到 `%LOCALAPPDATA%\Programs`，不弹 UAC |
+| 便携版 | 解压 `usb-switch-1.0.0-windows-x64.zip` 到电脑本地，双击 `usb-switch.exe` |
 
-**English:** run the setup executable for a per-user install (no UAC prompt), or extract the portable ZIP and run `usb-switch.exe`.
+**English:** the [1.0.0 release](https://github.com/quji762/USB-Switch/releases/tag/1.0.0) has the Windows setup executable and the portable ZIP. The packages are unsigned, so SmartScreen may warn on first launch. Run `usb-switch-setup-1.0.0.0.exe` for a per-user install (no UAC prompt), or extract `usb-switch-1.0.0-windows-x64.zip` and run `usb-switch.exe`.
 
 ## 快速上手 / Quick start
 
