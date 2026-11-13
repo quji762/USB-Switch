@@ -37,6 +37,7 @@ Windows 10 版本 1607 或更新——可执行文件直接导入 `GetDpiForWind
 ```powershell
 .\build.ps1                    # 自动探测 MSVC / MinGW，产物在 dist\
 .\build.ps1 -Config Debug      # 调试构建
+.\build.ps1 -Toolchain MinGW   # 同时装了 Visual Studio 时强制用 gcc
 ```
 
 ## 提交前检查 / Checks before a pull request
@@ -52,7 +53,7 @@ python tests\cli-output.py dist\usb-switch.exe         # Unicode 输出
 
 改了 `src/ui/` 且有交互桌面时，另跑 `.\tests\gui-smoke.ps1`。自绘几何（按钮圆角、通知卡片、跨 DPI 重排）只能编译检查，视觉效果需要人工确认。
 
-`.github/workflows/windows.yml` 里的两条流水线（MinGW 与 MSVC）自动触发已关闭，只在 Actions 页面手动运行；MSVC 那条用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误。无论跑不跑流水线，都请至少保证 `-Wall -Wextra` 下零警告。
+`.github/workflows/windows.yml` 在推送到 `master` 和打开拉取请求时自动运行 MinGW 与 MSVC 两条流水线，也可以在 Actions 页面手动运行。两条都带 `-WarningsAsErrors`。本地至少保证 `-Wall -Wextra` 下零警告。
 
 ## 提交规范 / Commit messages
 
@@ -72,14 +73,14 @@ python tests\cli-output.py dist\usb-switch.exe         # Unicode 输出
 
 ## 拉取请求 / Pull requests
 
-一个拉取请求只做一件事，并在描述里写清：改了什么、为什么、验证过什么（跑了上面哪些命令）、是否需要同步文档。`.github/workflows/windows.yml` 的两条流水线自动触发已关闭，需要时在 Actions 页面手动运行。
+外部用户不能创建拉取请求，只有协作者可以。发现问题请开 [issue](https://github.com/quji762/USB-Switch/issues)。源码按 GPL-3.0-only 授权，可以 fork 后自行修改。Dependabot 安全更新已打开；有可自动修复的依赖漏洞时，补丁会以拉取请求提交。
 
-评审节奏与合并时限没有成文承诺——维护者会在有余力时处理。
+一个拉取请求只做一件事，并在描述里写清改了什么、为什么、验证过什么、是否需要同步文档。评审节奏与合并时限没有成文承诺。
 
-**English:** keep each pull request to one change, and describe what changed, why, what you verified, and whether docs need updating. There is no committed review turnaround.
+**English:** people without write access cannot open a pull request. Report problems as [issues](https://github.com/quji762/USB-Switch/issues). The source is GPL-3.0-only; forks are allowed. Dependabot security updates are enabled and submit a pull request when a dependency advisory has an automated fix. Keep each pull request to one change, and describe what changed, why, what you verified, and whether docs need updating. There is no committed review turnaround.
 
 ## 安全报告 / Security
 
-仓库尚未公布私密的漏洞报告渠道。如果你认为发现了安全问题，请不要直接开公开 issue——先通过 GitHub 上的私有渠道联系维护者，或询问应采用哪种方式。在渠道确认之前，本节不提供具体的报告地址或响应时限。
+安全问题请用 GitHub 的私密漏洞报告（仓库页面 **Security** → **Report a vulnerability**），不要开公开 issue。这里不承诺响应时限。
 
-**English:** no private vulnerability-reporting channel has been published yet. Please do not open a public issue for a suspected security problem; contact the maintainer privately and ask which channel to use. No address or response window is promised until one is confirmed.
+**English:** report security problems through GitHub private vulnerability reporting (**Security** → **Report a vulnerability**). Do not open a public issue. No response window is promised.

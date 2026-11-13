@@ -31,6 +31,7 @@ USB-Switch 是 Windows 托盘里的 USB 安全弹出工具，C++17，无第三�
 |---|---|
 | 构建 | `.\build.ps1`（自动探测 MSVC/MinGW，产物在 `dist\`） |
 | 构建（指定配置） | `.\build.ps1 -Config Debug` |
+| 构建（指定工具链） | `.\build.ps1 -Toolchain MinGW` 或 `-Toolchain MSVC`。两边都装了时 Auto 选 MSVC |
 | 手动配置 | `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++ -DCMAKE_RC_COMPILER=windres` |
 | 测试 | `.\tools\run-tests.ps1` |
 | 测试（含真机枚举） | `.\tools\run-tests.ps1 -Runtime` |
@@ -40,7 +41,7 @@ USB-Switch 是 Windows 托盘里的 USB 安全弹出工具，C++17，无第三�
 | CLI 契约检查 | `python tests\cli.py <exe 路径>`、`python tests\cli-output.py <exe 路径>` |
 | 重新生成图标 | `python tools\make_icon.py` |
 
-本地改动后请至少保证 `-Wall -Wextra` 下零警告——`.github/workflows/windows.yml` 的 MSVC 流水线用 `-DQE_WARNINGS_AS_ERRORS=ON` 把警告当错误，但自动触发已关闭，只在 Actions 页面手动运行。
+本地改动后请至少保证 `-Wall -Wextra` 下零警告。`.github/workflows/windows.yml` 在推送到 `master` 和打开拉取请求时自动运行；MSVC 那条用 `-WarningsAsErrors` 把警告当错误。也可以在 Actions 页面手动运行。
 
 ## 改动约定
 

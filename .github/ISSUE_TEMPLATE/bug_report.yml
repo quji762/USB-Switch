@@ -1,0 +1,43 @@
+name: Bug report / 缺陷报告
+description: USB-Switch did not behave as documented.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Logs can contain device names and instance IDs. Read them before pasting.
+        日志可能包含设备名称和实例 ID，粘贴前请自行检查。
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version / Windows 版本
+      placeholder: Windows 11 24H2 (10.0.26100)
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App version / 程序版本
+      description: Output of `usb-switch.exe --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: Device / 设备
+      description: Flash drive, external disk, or card reader, and the model if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps / 复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / 日志
+      description: From `%LOCALAPPDATA%\USB-Switch\logs\`. Remove anything you do not want public.
+    validations:
+      required: false

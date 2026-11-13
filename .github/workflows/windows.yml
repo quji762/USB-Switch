@@ -1,11 +1,17 @@
 name: Windows build and tests
 
-# Automatic triggers are off: this pipeline only runs when started by hand from
-# the Actions tab (workflow_dispatch). The same checks run locally through
-# tools/run-tests.ps1 and the python checkers, which is how this repository is
-# verified day to day. Re-add push/pull_request here to automate it again.
+# Push to master and pull requests both run the pipeline. workflow_dispatch
+# stays for a manual rerun. The hosted image includes Visual Studio, so the
+# MinGW job passes -Toolchain MinGW; Auto would take the MSVC branch.
 on:
+  push:
+    branches: [master]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,7 +34,7 @@ jobs:
             mingw-w64-ucrt-x86_64-ninja
       - name: Build
         shell: msys2 {0}
-        run: pwsh -NoProfile -File ./build.ps1
+        run: pwsh -NoProfile -File ./build.ps1 -Toolchain MinGW -WarningsAsErrors
       - name: Check source strings and executable resources
         shell: msys2 {0}
         run: |
@@ -38,14 +44,6 @@ jobs:
       - name: Run unit and device enumeration tests
         shell: msys2 {0}
         run: pwsh -NoProfile -File ./tools/run-tests.ps1 -Runtime
-      - name: Build and inspect MinGW executable
-        shell: msys2 {0}
-        run: |
-          set -e
-          cmake -S . -B build/mingw -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++ -DCMAKE_RC_COMPILER=windres -DQE_WARNINGS_AS_ERRORS=ON
-          cmake --build build/mingw
-          python tools/check-resources.py build/mingw/usb-switch.exe
-          pwsh -NoProfile -File ./tests/migration.ps1 -Exe ./build/mingw/usb-switch.exe
       - name: Check CLI
         shell: pwsh
         run: |
@@ -64,7 +62,13 @@ jobs:
         shell: pwsh
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
-          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not found on runner' }
+          if (!(Test-Path $iscc)) {
+            $inno = Join-Path $env:TEMP 'innosetup-6.7.4.exe'
+            Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe' -OutFile $inno
+            $install = Start-Process -FilePath $inno -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+            if ($install.ExitCode -ne 0) { throw "Inno Setup install failed: $($install.ExitCode)" }
+          }
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not found after install' }
           & $iscc /Qp installer/usb-switch.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
           $setup = Get-ChildItem dist/installer/usb-switch-setup-*.exe | Select-Object -First 1
@@ -85,22 +89,19 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # Compiles the MSVC-only paths the MinGW job never touches: /W4 /WX
-      # (QE_WARNINGS_AS_ERRORS) and the static MSVC runtime. Ninja rather than
-      # the "Visual Studio 17 2022" generator on purpose: that generator fails to
-      # link with the /MANIFESTINPUT option CMakeLists.txt sets (CVT1100,
-      # duplicate MANIFEST id 1), and build.ps1 already proves the Ninja path.
-      - name: Build with MSVC (Ninja generator, warnings as errors)
+      # build.ps1 loads vcvars, then uses Ninja when it is on PATH and NMake
+      # otherwise. The Visual Studio generator is avoided on purpose: together
+      # with /MANIFESTINPUT it fails to link (CVT1100, duplicate manifest id 1).
+      # The hosted image no longer ships the "Visual Studio 17 2022" generator.
+      - name: Build with MSVC (warnings as errors)
         shell: pwsh
         run: |
-          cmake -S . -B build/msvc -G Ninja -DCMAKE_BUILD_TYPE=Release -DQE_WARNINGS_AS_ERRORS=ON
-          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
-          cmake --build build/msvc
+          ./build.ps1 -Toolchain MSVC -WarningsAsErrors
           if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
       - name: Check source strings and executable resources
         shell: pwsh
         run: |
           python tools/check-strings.py
           if ($LASTEXITCODE -ne 0) { throw 'Source consistency check failed' }
-          python tools/check-resources.py build/msvc/usb-switch.exe
+          python tools/check-resources.py dist/usb-switch.exe
           if ($LASTEXITCODE -ne 0) { throw 'Resource check failed' }

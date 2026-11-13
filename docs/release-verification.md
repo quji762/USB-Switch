@@ -22,12 +22,12 @@ GUI 冒烟测试需要交互桌面：
 
 ## 持续集成 / CI
 
-`.github/workflows/windows.yml` 定义了两条流水线（MinGW 与 MSVC），但**自动触发已关闭**：目前只在 Actions 页面手动运行时才会执行。日常验证靠本节的自动化检查加上 `.\tools\release.ps1`。
+`.github/workflows/windows.yml` 在推送到 `master` 和打开拉取请求时自动运行，也可以在 Actions 页面手动运行。日常本地验证仍是本节的检查加上 `.\tools\release.ps1`。
 
-两条流水线的内容：
+托管镜像同时装有 Visual Studio 和 MSYS2。MinGW 作业传 `-Toolchain MinGW`，否则 `build.ps1` 的自动探测会选中 MSVC。两条作业都带 `-WarningsAsErrors`。
 
-- **MinGW** —— 构建、字符串检查、可执行文件资源检查、单元测试、设备枚举，外加托盘 GUI 冒烟和安装包测试。
-- **MSVC** —— Ninja 生成器加 `-DQE_WARNINGS_AS_ERRORS=ON`，覆盖 `/W4 /WX`、静态 MSVC 运行时，以及只有 MSVC 才报的警告（有符号/无符号不匹配、整型到 `HANDLE` 的转换、局部变量遮蔽）。用 Ninja 而不是 `Visual Studio 17 2022` 生成器：后者配上 `CMakeLists.txt` 里的 `/MANIFESTINPUT` 会链接失败（`CVT1100`，清单资源 id 1 重复），而 `.\build.ps1` 走的就是 Ninja 这条已验证的路。
+- **MinGW** —— 构建、字符串检查、可执行文件资源检查、单元测试、设备枚举，外加命令行、迁移、托盘 GUI 冒烟和安装包测试。镜像没有 Inno Setup，作业会自行安装 6.7.4，与随仓库分发的简体中文翻译一致。
+- **MSVC** —— `build.ps1 -Toolchain MSVC` 先调用 `vcvars64.bat`，有 Ninja 时用 Ninja，否则用 NMake。覆盖 `/W4 /WX`、静态 MSVC 运行时，以及只有 MSVC 才报的警告。不用 Visual Studio 生成器：它配上 `CMakeLists.txt` 里的 `/MANIFESTINPUT` 会链接失败（`CVT1100`，清单资源 id 1 重复）。托管镜像也不再提供 `Visual Studio 17 2022` 这个生成器名。
 
 手动运行：GitHub 仓库的 Actions 页面 → *Windows build and tests* → *Run workflow*。
 
