@@ -53,10 +53,12 @@ jobs:
           python tests/cli-output.py $exe
           if ($LASTEXITCODE -ne 0) { throw 'CLI Unicode output checks failed' }
           ./tests/migration.ps1 -Exe $exe
+      # Own process so the step exit code is the script's, not the unknown-target
+      # probe inside it (that probe exits 2). The script also clears the code.
       - name: Run GUI smoke test
         shell: pwsh
         run: |
-          ./tests/gui-smoke.ps1 -Exe (Join-Path $PWD 'dist/usb-switch.exe')
+          pwsh -NoProfile -File ./tests/gui-smoke.ps1 -Exe (Join-Path $PWD 'dist/usb-switch.exe')
           if ($LASTEXITCODE -ne 0) { throw 'GUI smoke test failed' }
       - name: Build and test installer
         shell: pwsh

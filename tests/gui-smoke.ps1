@@ -102,3 +102,7 @@ try {
     if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force }
     if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }
 }
+# --eject of an unknown target exits 2 on purpose. In-process callers,
+# including Actions' pwsh shell, treat a leftover $LASTEXITCODE as this
+# script's result. A failure above throws and never reaches this line.
+$global:LASTEXITCODE = 0
